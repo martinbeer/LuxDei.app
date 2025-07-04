@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, StatusBar, Dimensions } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Switch, StatusBar, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -12,45 +12,117 @@ const normalize = (size) => {
   return Math.round(newSize);
 };
 
-const SettingsScreen = ({ navigation }) => {
-  const { colors } = useTheme();
+const SettingsScreen = ({ navigation, onClose, hideHeader }) => {
+  const { colors, isDarkMode, selectedColor, toggleTheme, changeColor, ColorPalette } = useTheme();
+
+  const handleClose = () => {
+    if (onClose) {
+      onClose();
+    } else if (navigation) {
+      navigation.goBack();
+    }
+  };
+
+  // Color selection component
+  const ColorSelector = () => (
+    <View style={[styles.settingItem, { backgroundColor: colors.cardBackground, flexDirection: 'column', alignItems: 'flex-start' }]}>
+      <View style={styles.settingItemLeft}>
+        <Ionicons name="color-palette" size={20} color={colors.primary} />
+        <Text style={[styles.settingItemText, { color: colors.primary }]}>Farbschema</Text>
+      </View>
+      <View style={styles.colorGrid}>
+        {Object.entries(ColorPalette).map(([key, theme]) => (
+          <TouchableOpacity 
+            key={key}
+            style={[
+              styles.colorOption,
+              { backgroundColor: theme.light.primary },
+              selectedColor === key && { borderWidth: 3, borderColor: colors.white }
+            ]}
+            onPress={() => changeColor(key)}
+          >
+            <View style={[styles.colorInner, { backgroundColor: theme.light.primary }]} />
+            {selectedColor === key && (
+              <Ionicons name="checkmark" size={16} color={colors.white} style={styles.checkmark} />
+            )}
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
-      
-      {/* Header with extended background */}
-      <View style={[styles.headerBackground, { backgroundColor: colors.primary }]}>
-        <SafeAreaView style={styles.headerSafeArea}>
-          <View style={styles.header}>
-            <TouchableOpacity 
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-            >
-              <Ionicons name="arrow-back" size={24} color={colors.white} />
-            </TouchableOpacity>
-            
-            <View style={styles.headerContent}>
-              <Text style={[styles.headerTitle, { color: colors.white }]}>Einstellungen</Text>
-              <Text style={[styles.headerSubtitle, { color: colors.white }]}>Personalisierung</Text>
-            </View>
+      {!hideHeader && (
+        <>
+          <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
+          
+          {/* Header with extended background */}
+          <View style={[styles.headerBackground, { backgroundColor: colors.primary }]}>
+            <SafeAreaView style={styles.headerSafeArea}>
+              <View style={styles.header}>
+                <TouchableOpacity 
+                  style={styles.backButton}
+                  onPress={handleClose}
+                >
+                  <Ionicons name="arrow-back" size={24} color={colors.white} />
+                </TouchableOpacity>
+                <Text style={[styles.headerTitle, { color: colors.white }]}>Einstellungen</Text>
+                <View style={styles.placeholder} />
+              </View>
+            </SafeAreaView>
           </View>
-        </SafeAreaView>
-      </View>
+        </>
+      )}
 
       {/* Content */}
-      <View style={styles.content}>
-        <View style={styles.settingsSection}>
-          <Text style={[styles.sectionTitle, { color: colors.primary }]}>Einstellungen</Text>
+      <View style={[styles.content, hideHeader && { flex: 1, paddingTop: 10 }]}>
+        <View style={styles.settingsGroup}>
+          <Text style={[styles.groupTitle, { color: colors.primary }]}>Personalisierung</Text>
           
           <View style={[styles.settingItem, { backgroundColor: colors.cardBackground }]}>
-            <View style={styles.settingItemContent}>
-              <Text style={[styles.settingItemTitle, { color: colors.text }]}>Über die App</Text>
-              <Text style={[styles.settingItemDescription, { color: colors.textSecondary }]}>
-                LuxDei - Ihre katholische Begleiter-App
-              </Text>
+            <View style={styles.settingItemLeft}>
+              <Ionicons name="moon" size={20} color={colors.primary} />
+              <Text style={[styles.settingItemText, { color: colors.primary }]}>Dark Mode</Text>
             </View>
+            <Switch 
+              value={isDarkMode} 
+              onValueChange={toggleTheme}
+              trackColor={{ false: '#767577', true: colors.primary }}
+              thumbColor={isDarkMode ? colors.white : '#f4f3f4'}
+            />
           </View>
+
+          <ColorSelector />
+        </View>
+
+        {/* More Settings */}
+        <View style={styles.settingsGroup}>
+          <Text style={[styles.groupTitle, { color: colors.primary }]}>Allgemein</Text>
+          
+          <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.cardBackground }]}>
+            <View style={styles.settingItemLeft}>
+              <Ionicons name="notifications" size={20} color={colors.primary} />
+              <Text style={[styles.settingItemText, { color: colors.primary }]}>Benachrichtigungen</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.cardBackground }]}>
+            <View style={styles.settingItemLeft}>
+              <Ionicons name="language" size={20} color={colors.primary} />
+              <Text style={[styles.settingItemText, { color: colors.primary }]}>Sprache</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.cardBackground }]}>
+            <View style={styles.settingItemLeft}>
+              <Ionicons name="help-circle" size={20} color={colors.primary} />
+              <Text style={[styles.settingItemText, { color: colors.primary }]}>Hilfe & Support</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -70,62 +142,81 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: normalize(10),
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
   },
-  headerContent: {
-    alignItems: 'center',
+  backButton: {
+    padding: 8,
   },
   headerTitle: {
-    fontSize: normalize(30),
+    fontSize: normalize(20),
     fontWeight: 'bold',
     fontFamily: 'Montserrat_700Bold',
   },
-  headerSubtitle: {
-    fontSize: normalize(16),
-    fontFamily: 'Montserrat_400Regular',
-    marginTop: 4,
-  },
-  backButton: {
-    position: 'absolute',
-    left: 20,
-    top: normalize(15),
-    padding: 8,
+  placeholder: {
+    width: 40,
   },
   content: {
     flex: 1,
     paddingHorizontal: 20,
-    paddingTop: normalize(25),
+    paddingTop: 30,
   },
-  settingsSection: {
-    marginBottom: normalize(30),
+  settingsGroup: {
+    marginBottom: 30,
   },
-  sectionTitle: {
-    fontSize: normalize(20),
+  groupTitle: {
+    fontSize: normalize(18),
     fontWeight: '600',
     fontFamily: 'Montserrat_600SemiBold',
-    marginBottom: normalize(20),
+    marginBottom: 15,
   },
   settingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: normalize(20),
-    borderRadius: 15,
-    marginBottom: normalize(15),
+    borderRadius: 12,
+    marginBottom: 10,
   },
-  settingItemContent: {
-    flex: 1,
+  settingItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  settingItemTitle: {
+  settingItemText: {
     fontSize: normalize(16),
-    fontFamily: 'Montserrat_600SemiBold',
-    marginBottom: normalize(4),
+    fontFamily: 'Montserrat_500Medium',
+    marginLeft: 12,
   },
-  settingItemDescription: {
-    fontSize: normalize(13),
-    fontFamily: 'Montserrat_400Regular',
-    opacity: 0.8,
+  colorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    marginTop: 15,
+    paddingHorizontal: 5,
+    justifyContent: 'space-between',
+  },
+  colorOption: {
+    width: 35,
+    height: 35,
+    borderRadius: 17.5,
+    marginHorizontal: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  colorInner: {
+    width: 27,
+    height: 27,
+    borderRadius: 13.5,
+  },
+  checkmark: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginTop: -8,
+    marginLeft: -8,
   },
 });
 

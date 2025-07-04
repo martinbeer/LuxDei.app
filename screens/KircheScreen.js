@@ -1,14 +1,16 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Colors } from '../constants/colors';
+import { useTheme } from '../context/ThemeContext';
 
 const KircheScreen = () => {
+  const { colors } = useTheme();
+  
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.content}>
-        <Text style={styles.title}>Kirche</Text>
-        <Text style={styles.subtitle}>Hier kommen die Kirchen-Infos hin</Text>
+        <Text style={[styles.title, { color: colors.primary }]}>Kirche</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Hier kommen die Kirchen-Infos hin</Text>
       </View>
     </SafeAreaView>
   );
@@ -17,7 +19,6 @@ const KircheScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   content: {
     flex: 1,
@@ -28,13 +29,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: Colors.primary,
     fontFamily: 'Montserrat_700Bold',
     marginBottom: 10,
   },
   subtitle: {
     fontSize: 16,
-    color: Colors.textSecondary,
     fontFamily: 'Montserrat_400Regular',
     textAlign: 'center',
   },
