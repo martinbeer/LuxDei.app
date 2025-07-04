@@ -156,8 +156,8 @@ function MainTabNavigator() {
             paddingBottom: 15,
             paddingTop: 15,
             height: 85,
-            borderTopLeftRadius: 20,
-            borderTopRightRadius: 20,
+            borderTopLeftRadius: 25,
+            borderTopRightRadius: 25,
             borderTopWidth: 3,
             borderLeftWidth: 3,
             borderRightWidth: 3,
@@ -205,7 +205,7 @@ function MainTabNavigator() {
             right: '45%',
             height: 3,
             backgroundColor: colors.cardBackground,
-            borderRadius: 2,
+            borderRadius: 3,
             opacity: 0.3,
           }} />
         )}
@@ -231,8 +231,8 @@ function MainTabNavigator() {
               right: 0,
               height: height - 180, // Stop before header (leave 180px for header)
               backgroundColor: colors.background,
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
+              borderTopLeftRadius: 25,
+              borderTopRightRadius: 25,
               transform: [
                 {
                   translateY: slideAnim.interpolate({
@@ -257,7 +257,7 @@ function MainTabNavigator() {
                 onPress={hideSettings}
                 style={{
                   padding: 5,
-                  borderRadius: 15,
+                  borderRadius: 20,
                   backgroundColor: colors.cardBackground,
                 }}
               >

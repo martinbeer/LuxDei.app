@@ -121,8 +121,8 @@ const HomeScreen = ({ slideAnim }) => {
     headerBackground: {
       backgroundColor: colors.primary,
       paddingTop: 0,
-      borderBottomLeftRadius: 20,
-      borderBottomRightRadius: 20,
+      borderBottomLeftRadius: 25,
+      borderBottomRightRadius: 25,
     },
     headerSafeArea: {
       backgroundColor: 'transparent',
@@ -159,7 +159,7 @@ const HomeScreen = ({ slideAnim }) => {
     dateCard: {
       backgroundColor: colors.cardBackground,
       padding: normalize(16),
-      borderRadius: 15,
+      borderRadius: 20,
       marginTop: normalize(20),
       marginBottom: normalize(25),
       alignItems: 'center',
@@ -217,7 +217,7 @@ const HomeScreen = ({ slideAnim }) => {
     menuItem: {
       backgroundColor: colors.cardBackground,
       padding: normalize(22),
-      borderRadius: 12,
+      borderRadius: 18,
       marginBottom: normalize(15),
       flexDirection: 'row',
       justifyContent: 'space-between',

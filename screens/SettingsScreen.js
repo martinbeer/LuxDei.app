@@ -135,8 +135,8 @@ const styles = StyleSheet.create({
   },
   headerBackground: {
     paddingTop: 0,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
   },
   headerSafeArea: {
     backgroundColor: 'transparent',
@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: normalize(20),
-    borderRadius: 12,
+    borderRadius: 18,
     marginBottom: 10,
   },
   settingItemLeft: {

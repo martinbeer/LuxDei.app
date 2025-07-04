@@ -1,18 +1,115 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Dimensions, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import BibelScreen from './BibelScreen';
+
+const { width, height } = Dimensions.get('window');
+const scale = width / 320; // Base width for scaling
+
+const normalize = (size) => {
+  const newSize = size * scale;
+  return Math.round(newSize);
+};
 
 const SchriftenScreen = () => {
   const { colors } = useTheme();
-  
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.content}>
-        <Text style={[styles.title, { color: colors.primary }]}>Schriften</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Hier kommen die Schriften hin</Text>
+  const [activeTab, setActiveTab] = useState(0);
+  const scrollViewRef = useRef(null);
+
+  const tabs = [
+    { id: 0, name: 'Bibel', component: BibelScreen },
+    { id: 1, name: 'Väter' },
+    { id: 2, name: 'Konzile' },
+    { id: 3, name: 'Lehrer' },
+    { id: 4, name: 'Papst' },
+    { id: 5, name: 'Katechismus' },
+    { id: 6, name: 'Heilige' },
+    { id: 7, name: 'Liturgie' },
+    { id: 8, name: 'Theologie' },
+    { id: 9, name: 'Recht' },
+  ];
+
+  const handleTabPress = (tabId) => {
+    setActiveTab(tabId);
+    // Scroll tab into view
+    if (scrollViewRef.current) {
+      const tabWidth = 100; // Approximate tab width
+      const scrollPosition = tabId * tabWidth - width / 2 + tabWidth / 2;
+      scrollViewRef.current.scrollTo({ x: Math.max(0, scrollPosition), animated: true });
+    }
+  };
+
+  const renderTabContent = () => {
+    const activeTabData = tabs.find(tab => tab.id === activeTab);
+    
+    if (activeTabData?.component) {
+      const Component = activeTabData.component;
+      return <Component />;
+    }
+    
+    return (
+      <View style={styles.comingSoonContainer}>
+        <Ionicons name="book-outline" size={80} color={colors.cardBackground} />
+        <Text style={[styles.comingSoonTitle, { color: colors.primary }]}>
+          {activeTabData?.name}
+        </Text>
+        <Text style={[styles.comingSoonText, { color: colors.textSecondary }]}>
+          Wird bald verfügbar sein
+        </Text>
       </View>
-    </SafeAreaView>
+    );
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
+      
+      {/* Header with extended background */}
+      <View style={[styles.headerBackground, { backgroundColor: colors.primary }]}>
+        <SafeAreaView style={styles.headerSafeArea}>
+          <View style={styles.header}>
+            <Text style={[styles.headerTitle, { color: colors.white }]}>Schriften</Text>
+          </View>
+        </SafeAreaView>
+      </View>
+
+      {/* Tab Navigation */}
+      <View style={[styles.tabContainer, { backgroundColor: colors.background }]}>
+        <ScrollView
+          ref={scrollViewRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabScrollContainer}
+        >
+          {tabs.map((tab) => (
+            <TouchableOpacity
+              key={tab.id}
+              style={[
+                styles.tab,
+                { backgroundColor: activeTab === tab.id ? colors.primary : colors.cardBackground }
+              ]}
+              onPress={() => handleTabPress(tab.id)}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  { color: activeTab === tab.id ? colors.white : colors.primary }
+                ]}
+              >
+                {tab.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Content */}
+      <View style={styles.content}>
+        {renderTabContent()}
+      </View>
+    </View>
   );
 };
 
@@ -20,20 +117,64 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  headerBackground: {
+    paddingTop: 0,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
+  },
+  headerSafeArea: {
+    backgroundColor: 'transparent',
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingVertical: normalize(10),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: normalize(30),
+    fontWeight: 'bold',
+    fontFamily: 'Montserrat_700Bold',
+  },
+  tabContainer: {
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  tabScrollContainer: {
+    paddingHorizontal: 20,
+  },
+  tab: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginRight: 10,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  tabText: {
+    fontSize: normalize(14),
+    fontFamily: 'Montserrat_500Medium',
+    fontWeight: '500',
+  },
   content: {
+    flex: 1,
+  },
+  comingSoonContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 40,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    fontFamily: 'Montserrat_700Bold',
+  comingSoonTitle: {
+    fontSize: normalize(24),
+    fontFamily: 'Montserrat_600SemiBold',
+    fontWeight: '600',
+    marginTop: 20,
     marginBottom: 10,
   },
-  subtitle: {
-    fontSize: 16,
+  comingSoonText: {
+    fontSize: normalize(16),
     fontFamily: 'Montserrat_400Regular',
     textAlign: 'center',
   },
