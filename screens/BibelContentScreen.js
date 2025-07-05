@@ -410,6 +410,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingVertical: 20,
+    paddingBottom: 100,
   },
   verseContainer: {
     flexDirection: 'row',

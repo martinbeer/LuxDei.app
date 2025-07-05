@@ -230,6 +230,199 @@ const BibelScreen = () => {
     try {
       const results = [];
       
+      // Erweiterte Parsing-Funktion für Bibelreferenzen
+      const parseReferenceQuery = (query) => {
+        const trimmedQuery = query.trim();
+        
+        // Verschiedene Formate unterstützen:
+        // "Genesis 1:1", "Gen 1:1", "Psalm 23", "Mt 5:3-7", "1. Korinther 13:4"
+        
+        // Pattern für: "Buchname Kapitel:Vers" oder "Buchname Kapitel:Vers-Vers"
+        const fullRefPattern = /^(.+?)\s+(\d+):(\d+)(?:-(\d+))?$/i;
+        // Pattern für: "Buchname Kapitel" 
+        const chapterPattern = /^(.+?)\s+(\d+)$/i;
+        
+        let match = fullRefPattern.exec(trimmedQuery);
+        if (match) {
+          return {
+            bookName: match[1].trim(),
+            chapter: parseInt(match[2]),
+            startVerse: parseInt(match[3]),
+            endVerse: match[4] ? parseInt(match[4]) : parseInt(match[3])
+          };
+        }
+        
+        match = chapterPattern.exec(trimmedQuery);
+        if (match) {
+          return {
+            bookName: match[1].trim(),
+            chapter: parseInt(match[2]),
+            startVerse: null,
+            endVerse: null
+          };
+        }
+        
+        return null;
+      };
+      
+      // Prüfe ob die Suche eine Bibelreferenz ist
+      const parsedRef = parseReferenceQuery(query);
+      
+      if (parsedRef) {
+        // Suche nach passendem Buch
+        const allBooks = [...oldTestamentBooks, ...newTestamentBooks];
+        const matchingBooks = allBooks.filter(book => {
+          const bookName = book.name.toLowerCase();
+          const queryBook = parsedRef.bookName.toLowerCase();
+          
+          // Exakte Übereinstimmung oder Teilübereinstimmung
+          if (bookName === queryBook || 
+              bookName.includes(queryBook) || 
+              queryBook.includes(bookName)) {
+            return true;
+          }
+          
+          // Erweiterte Abkürzungs-Unterstützung
+          const abbreviationMap = {
+            'gen': ['genesis'],
+            'ex': ['exodus'],
+            'lev': ['levitikus'],
+            'num': ['numeri'],
+            'dtn': ['deuteronomium'],
+            'jos': ['josua'],
+            'ri': ['richter'],
+            'rut': ['rut'],
+            'sam': ['samuel'],
+            'kön': ['könige'],
+            'chr': ['chronik'],
+            'esra': ['esra'],
+            'neh': ['nehemia'],
+            'tob': ['tobit'],
+            'jdt': ['judit'],
+            'est': ['ester'],
+            'makk': ['makkabäer'],
+            'ijob': ['ijob'],
+            'ps': ['psalm'],
+            'spr': ['sprichwörter'],
+            'koh': ['kohelet'],
+            'hld': ['hoheslied'],
+            'weish': ['weisheit'],
+            'sir': ['sirach'],
+            'jes': ['jesaja'],
+            'jer': ['jeremia'],
+            'klgl': ['klagelieder'],
+            'bar': ['baruch'],
+            'ez': ['ezechiel'],
+            'dan': ['daniel'],
+            'hos': ['hosea'],
+            'joel': ['joel'],
+            'am': ['amos'],
+            'obd': ['obadja'],
+            'jona': ['jona'],
+            'mi': ['micha'],
+            'nah': ['nahum'],
+            'hab': ['habakuk'],
+            'zef': ['zefanja'],
+            'hag': ['haggai'],
+            'sach': ['sacharja'],
+            'mal': ['maleachi'],
+            'mt': ['matthäus'],
+            'mk': ['markus'],
+            'lk': ['lukas'],
+            'joh': ['johannes'],
+            'apg': ['apostelgeschichte'],
+            'röm': ['römer'],
+            'kor': ['korinther'],
+            'gal': ['galater'],
+            'eph': ['epheser'],
+            'phil': ['philipper'],
+            'kol': ['kolosser'],
+            'thess': ['thessalonicher'],
+            'tim': ['timotheus'],
+            'tit': ['titus'],
+            'phlm': ['philemon'],
+            'hebr': ['hebräer'],
+            'jak': ['jakobus'],
+            'petr': ['petrus'],
+            'jud': ['judas'],
+            'offb': ['offenbarung']
+          };
+          
+          // Prüfe Abkürzungen
+          for (const [abbr, fullNames] of Object.entries(abbreviationMap)) {
+            if (queryBook === abbr || queryBook.includes(abbr)) {
+              if (fullNames.some(name => bookName.includes(name))) {
+                return true;
+              }
+            }
+          }
+          
+          return false;
+        });
+        
+        if (matchingBooks.length > 0) {
+          const currentTranslation = translations.find(t => t.name === selectedTranslation);
+          const tableName = currentTranslation?.table || 'bibelverse';
+          
+          for (const book of matchingBooks) {
+            const databaseBookName = getDatabaseBookName(book.name, tableName);
+            
+            if (parsedRef.startVerse) {
+              // Spezifische Verse suchen
+              let query = supabase
+                .from(tableName)
+                .select('buch, kapitel, vers, text')
+                .eq('buch', databaseBookName)
+                .eq('kapitel', parsedRef.chapter)
+                .gte('vers', parsedRef.startVerse)
+                .lte('vers', parsedRef.endVerse);
+              
+              // Testament-Filter für Schöningh und Einheitsübersetzung
+              if (tableName === 'bibelverse_schoenigh' || tableName === 'bibelverse_einheit') {
+                const isNewTestament = [
+                  'Mt', 'Mk', 'Lk', 'Joh', 'Apg', 'Röm', '1Kor', '2Kor', 'Gal', 'Eph', 'Phil', 'Kol', 
+                  '1Thess', '2Thess', '1Tim', '2Tim', 'Tit', 'Phlm', 'Hebr', 'Jak', '1Petr', '2Petr', 
+                  '1Joh', '2Joh', '3Joh', 'Jud', 'Offb'
+                ].includes(databaseBookName);
+                
+                query = query.eq('testament', isNewTestament ? 'NT' : 'OT');
+              }
+              
+              const { data: verseResults, error } = await query.order('vers');
+              
+              if (!error && verseResults && verseResults.length > 0) {
+                verseResults.forEach(verse => {
+                  const verseRange = parsedRef.startVerse === parsedRef.endVerse 
+                    ? `${parsedRef.startVerse}`
+                    : `${parsedRef.startVerse}-${parsedRef.endVerse}`;
+                  
+                  results.push({
+                    type: 'verse',
+                    title: `${book.name} ${parsedRef.chapter}:${verse.vers}`,
+                    subtitle: verse.text.length > 80 ? verse.text.substring(0, 80) + '...' : verse.text,
+                    bookName: book.name,
+                    chapter: parsedRef.chapter,
+                    verse: verse.vers,
+                    icon: 'document-text-outline'
+                  });
+                });
+              }
+            } else {
+              // Ganzes Kapitel suchen
+              results.push({
+                type: 'chapter',
+                title: `${book.name} ${parsedRef.chapter}`,
+                subtitle: `Kapitel ${parsedRef.chapter} von ${book.name}`,
+                bookName: book.name,
+                chapter: parsedRef.chapter,
+                icon: 'library-outline'
+              });
+            }
+          }
+        }
+      }
+      
+      // Normale Suche (wie bisher)
       // 1. Suche in Büchern (lokale Suche)
       const allBooks = [...oldTestamentBooks, ...newTestamentBooks];
       const bookMatches = allBooks.filter(book => 
@@ -237,42 +430,47 @@ const BibelScreen = () => {
       );
       
       bookMatches.forEach(book => {
-        results.push({
-          type: 'book',
-          title: book.name,
-          subtitle: `Buch aus ${book.category}`,
-          bookName: book.name,
-          icon: 'book-outline'
-        });
+        // Verhindere Duplikate wenn bereits durch Referenz-Suche gefunden
+        if (!results.some(r => r.type === 'book' && r.bookName === book.name)) {
+          results.push({
+            type: 'book',
+            title: book.name,
+            subtitle: `Buch aus ${book.category}`,
+            bookName: book.name,
+            icon: 'book-outline'
+          });
+        }
       });
 
-      // 2. Suche in Versen (Datenbank-Suche) - verwende die aktuelle Übersetzung
-      const currentTranslation = translations.find(t => t.name === selectedTranslation);
-      const tableName = currentTranslation?.table || 'bibelverse';
-      
-      const { data: verseResults, error } = await supabase
-        .from(tableName)
-        .select('buch, kapitel, vers, text')
-        .ilike('text', `%${query}%`)
-        .limit(10);
+      // 2. Suche in Versen (Datenbank-Suche) - nur wenn nicht bereits durch Referenz-Suche abgedeckt
+      if (!parsedRef) {
+        const currentTranslation = translations.find(t => t.name === selectedTranslation);
+        const tableName = currentTranslation?.table || 'bibelverse';
+        
+        const { data: verseResults, error } = await supabase
+          .from(tableName)
+          .select('buch, kapitel, vers, text')
+          .ilike('text', `%${query}%`)
+          .limit(10);
 
-      if (!error && verseResults) {
-        verseResults.forEach(verse => {
-          // Finde den Display-Namen für das Buch
-          const displayBook = allBooks.find(book => 
-            getDatabaseBookName(book.name, tableName) === verse.buch
-          );
-          
-          results.push({
-            type: 'verse',
-            title: `${displayBook?.name || verse.buch} ${verse.kapitel}:${verse.vers}`,
-            subtitle: verse.text.length > 80 ? verse.text.substring(0, 80) + '...' : verse.text,
-            bookName: displayBook?.name || verse.buch,
-            chapter: verse.kapitel,
-            verse: verse.vers,
-            icon: 'document-text-outline'
+        if (!error && verseResults) {
+          verseResults.forEach(verse => {
+            // Finde den Display-Namen für das Buch
+            const displayBook = allBooks.find(book => 
+              getDatabaseBookName(book.name, tableName) === verse.buch
+            );
+            
+            results.push({
+              type: 'verse',
+              title: `${displayBook?.name || verse.buch} ${verse.kapitel}:${verse.vers}`,
+              subtitle: verse.text.length > 80 ? verse.text.substring(0, 80) + '...' : verse.text,
+              bookName: displayBook?.name || verse.buch,
+              chapter: verse.kapitel,
+              verse: verse.vers,
+              icon: 'document-text-outline'
+            });
           });
-        });
+        }
       }
 
       setSearchResults(results);
@@ -292,6 +490,14 @@ const BibelScreen = () => {
       navigation.navigate('BibelContent', { 
         bookName: databaseBookName,
         displayName: result.bookName,
+        translationTable: currentTranslation?.table || 'bibelverse'
+      });
+    } else if (result.type === 'chapter') {
+      // Navigiere zum spezifischen Kapitel
+      navigation.navigate('BibelContent', { 
+        bookName: databaseBookName,
+        displayName: result.bookName,
+        initialChapter: result.chapter,
         translationTable: currentTranslation?.table || 'bibelverse'
       });
     } else if (result.type === 'verse') {

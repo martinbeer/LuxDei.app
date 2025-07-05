@@ -52,7 +52,7 @@ const fetchLiturgicalData = async () => {
     console.log('API Response:', data); // Debug log
     
     if (data.Zelebrationen && Object.keys(data.Zelebrationen).length > 0) {
-      // Get all celebrations and take the LAST one (most important)
+      // Get all celebrations and take the LAST one (normal liturgy)
       const celebrations = Object.values(data.Zelebrationen);
       const lastCelebration = celebrations[celebrations.length - 1];
       

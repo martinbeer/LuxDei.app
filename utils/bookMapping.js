@@ -57,12 +57,12 @@ export const bookNameMapping = {
     'bibelverse_einheit': '2.Sam'
   },
   '1. Könige': {
-    'bibelverse': 'Das 1. Buch der KÃ¶nige',
+    'bibelverse': 'Das 1. Buch der Koenige',
     'bibelverse_schoenigh': '1Kön',
     'bibelverse_einheit': '1.Kön'
   },
   '2. Könige': {
-    'bibelverse': 'Das 2. Buch der KÃ¶nige',
+    'bibelverse': 'Das 2. Buch der KKoenige',
     'bibelverse_schoenigh': '2Kön',
     'bibelverse_einheit': '2.Kön'
   },
@@ -102,17 +102,17 @@ export const bookNameMapping = {
     'bibelverse_einheit': 'Est'
   },
   '1. Makkabäer': {
-    'bibelverse': 'Das 1. Buch der MakkabÃ¤er',
+    'bibelverse': 'Das 1. Buch der Makkabaer',
     'bibelverse_schoenigh': '1Makk',
     'bibelverse_einheit': '1.Makk'
   },
   '2. Makkabäer': {
-    'bibelverse': 'Das 2. Buch der  MakkabÃ¤er',
+    'bibelverse': 'Das 2. Buch der  Makkabaer',
     'bibelverse_schoenigh': '2Makk',
     'bibelverse_einheit': '2.Makk'
   },
   
-  // Altes Testament - Lehrbücher
+  // Altes Testament - Lehrschriften
   'Ijob': {
     'bibelverse': 'Das Buch Ijob',
     'bibelverse_schoenigh': 'Ijob',
@@ -124,7 +124,7 @@ export const bookNameMapping = {
     'bibelverse_einheit': 'Ps'
   },
   'Sprichwörter': {
-    'bibelverse': 'Das Buch der SprichwÃ¶rter',
+    'bibelverse': 'Das Buch der Sprichwoerter',
     'bibelverse_schoenigh': 'Spr',
     'bibelverse_einheit': 'Spr'
   },
@@ -149,7 +149,7 @@ export const bookNameMapping = {
     'bibelverse_einheit': 'Sir'
   },
   
-  // Altes Testament - Prophetenbücher
+  // Altes Testament - Propheten
   'Jesaja': {
     'bibelverse': 'Das Buch Jesaja',
     'bibelverse_schoenigh': 'Jes',
@@ -192,7 +192,7 @@ export const bookNameMapping = {
   },
   'Amos': {
     'bibelverse': 'Das Buch Amos',
-    'bibelverse_schoenigh': 'Amos',
+    'bibelverse_schoenigh': 'Am',
     'bibelverse_einheit': 'Am'
   },
   'Obadja': {
@@ -243,7 +243,7 @@ export const bookNameMapping = {
   
   // Neues Testament - Evangelien
   'Matthäus': {
-    'bibelverse': 'MatthÃ¤usevangelium',
+    'bibelverse': 'Matthaeusevangelium',
     'bibelverse_schoenigh': 'Mt',
     'bibelverse_einheit': 'Mt'
   },
@@ -272,7 +272,7 @@ export const bookNameMapping = {
   
   // Neues Testament - Paulusbriefe
   'Römer': {
-    'bibelverse': 'RÃ¶merbrief',
+    'bibelverse': 'Roemerbrief',
     'bibelverse_schoenigh': 'Röm',
     'bibelverse_einheit': 'Röm'
   },
@@ -337,7 +337,7 @@ export const bookNameMapping = {
     'bibelverse_einheit': 'Phlm'
   },
   'Hebräer': {
-    'bibelverse': 'Hebräerbrief',
+    'bibelverse': 'Hebraerbrief',
     'bibelverse_schoenigh': 'Hebr',
     'bibelverse_einheit': 'Hebr'
   },
@@ -387,29 +387,19 @@ export const bookNameMapping = {
   }
 };
 
-// Funktion um den Datenbank-Namen für ein Buch zu bekommen
-export const getDatabaseBookName = (displayName, tableName = 'bibelverse') => {
-  const mapping = bookNameMapping[displayName];
+// Hilfsfunktion um den Datenbank-Buchnamen zu bekommen
+export const getDatabaseBookName = (appBookName, tableName) => {
+  const mapping = bookNameMapping[appBookName];
   if (!mapping) {
-    console.warn(`No mapping found for book: ${displayName}`);
-    return displayName;
+    console.warn(`No mapping found for book: ${appBookName}`);
+    return null;
   }
   
-  // Bestimme den korrekten Tabellennamen-Schlüssel
-  let tableKey = tableName;
-  if (tableName === 'bibelverse_schoenigh') {
-    tableKey = 'bibelverse_schoenigh';
-  } else if (tableName === 'bibelverse_einheit') {
-    tableKey = 'bibelverse_einheit';
-  } else {
-    tableKey = 'bibelverse';
+  const databaseName = mapping[tableName];
+  if (!databaseName) {
+    console.warn(`No database name found for book: ${appBookName} in table: ${tableName}`);
+    return null;
   }
   
-  const bookName = mapping[tableKey];
-  if (!bookName) {
-    console.warn(`No mapping found for book: ${displayName} in table: ${tableName}`);
-    return mapping['bibelverse'] || displayName;
-  }
-  
-  return bookName;
+  return databaseName;
 };

@@ -11,8 +11,8 @@ export const BOOK_NAME_MAPPING = {
   'Rut': 'Das Buch Rut',
   '1. Samuel': 'Das 1. Buch Samuel',
   '2. Samuel': 'Das 2. Buch Samuel',
-  '1. Könige': 'Das 1. Buch der Könige',
-  '2. Könige': 'Das 2. Buch der Könige',
+  '1. Könige': 'Das 1. Buch der Koenige',
+  '2. Könige': 'Das 2. Buch der KKoenige',
   '1. Chronik': 'Das 1. Buch der Chronik',
   '2. Chronik': 'Das 2. Buch der Chronik',
   'Esra': 'Das Buch der Esra',
@@ -20,13 +20,13 @@ export const BOOK_NAME_MAPPING = {
   'Tobit': 'Das Buch Tobit',
   'Judit': 'Das Buch Judit',
   'Ester': 'Das Buch Ester',
-  '1. Makkabäer': 'Das 1. Buch der Makkabäer',
-  '2. Makkabäer': 'Das 2. Buch der  Makkabäer',
-  
+  '1. Makkabäer': 'Das 1. Buch der Makkabaeer',
+  '2. Makkabäer': 'Das 2. Buch der  Makkabaeer',
+
   // Altes Testament - Lehrbücher
   'Ijob': 'Das Buch Ijob',
   'Psalmen': 'Die Psalmen',
-  'Sprichwörter': 'Das Buch der Sprichwörter',
+  'Sprichwörter': 'Das Buch der Sprichwoerter',
   'Kohelet': 'Das Buch Kohelet',
   'Hoheslied': 'Das Hohelied',
   'Weisheit': 'Das Buch der Weisheit',
@@ -53,7 +53,7 @@ export const BOOK_NAME_MAPPING = {
   'Maleachi': 'Das Buch Maleachi',
   
   // Neues Testament - Evangelien
-  'Matthäus': 'Matthäusevangelium',
+  'Matthäus': 'Matthaeusevangelium',
   'Markus': 'Markusevangelium',
   'Lukas': 'Lukasevangelium',
   'Johannes': 'Johannesevangelium',
@@ -62,7 +62,7 @@ export const BOOK_NAME_MAPPING = {
   'Apostelgeschichte': 'Apostelgeschichte',
   
   // Neues Testament - Paulusbriefe
-  'Römer': 'Römerbrief',
+  'Römer': 'Roemerbrief',
   '1. Korinther': '1. Korintherbrief',
   '2. Korinther': '2. Korintherbrief',
   'Galater': 'Galaterbrief',
@@ -75,8 +75,8 @@ export const BOOK_NAME_MAPPING = {
   '2. Timotheus': '2. Timotheusbrief',
   'Titus': 'Titusbrief',
   'Philemon': 'Philemonbrief',
-  'Hebräer': 'Hebräerbrief',
-  
+  'Hebräer': 'Hebraerbrief',
+
   // Neues Testament - Katholische Briefe
   'Jakobus': 'Jakobusbrief',
   '1. Petrus': '1. Petrusbrief',
