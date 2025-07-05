@@ -14,8 +14,9 @@ const normalize = (size) => {
 
 const BibelContentScreen = ({ route, navigation }) => {
   const { colors } = useTheme();
-  const { bookName, displayName, initialChapter, highlightVerse } = route.params;
+  const { bookName, displayName, initialChapter, highlightVerse, translationTable } = route.params;
   const bookDisplayName = displayName || bookName; // Fallback auf bookName wenn displayName nicht vorhanden
+  const tableName = translationTable || 'bibelverse'; // Fallback auf Standard-Tabelle
   
   const [currentChapter, setCurrentChapter] = useState(initialChapter || 1);
   const [verses, setVerses] = useState([]);
@@ -81,7 +82,7 @@ const BibelContentScreen = ({ route, navigation }) => {
       setPrefetchingChapters(prev => new Set(prev).add(cacheKey));
       
       const { data: versesData, error: versesError } = await supabase
-        .from('bibelverse')
+        .from(tableName)
         .select('*')
         .eq('buch', book)
         .eq('kapitel', chapter)
@@ -162,7 +163,7 @@ const BibelContentScreen = ({ route, navigation }) => {
       // Max Chapter nur einmal laden (beim ersten Aufruf)
       if (maxChapter === 1) {
         const { data, error: maxChapterError } = await supabase
-          .from('bibelverse')
+          .from(tableName)
           .select('kapitel')
           .eq('buch', bookName)
           .order('kapitel', { ascending: false })

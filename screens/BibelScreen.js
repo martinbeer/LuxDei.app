@@ -76,20 +76,18 @@ const ScrollingText = ({ text, style, maxWidth = 120 }) => {
 const BibelScreen = () => {
   const { colors } = useTheme();
   const navigation = useNavigation();
-  const [selectedTranslation, setSelectedTranslation] = useState('Einheitsübersetzung');
+  const [selectedTranslation, setSelectedTranslation] = useState('Allioli-Arndt');
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [showTranslationDropdown, setShowTranslationDropdown] = useState(false);
   const searchInputRef = useRef(null);
 
   const translations = [
-    'Einheitsübersetzung',
-    'Luther 2017',
-    'Elberfelder',
-    'Schlachter 2000',
-    'Neue Genfer',
-    'Hoffnung für alle'
+    { name: 'Allioli-Arndt', table: 'bibelverse' },
+    { name: 'Schöningh', table: 'bibelverse_schoenigh' },
+    { name: 'Einheitsübersetzung', table: 'bibelverse_einheit' }
   ];
 
   const oldTestamentBooks = [
@@ -194,11 +192,16 @@ const BibelScreen = () => {
       Keyboard.dismiss();
     }
     
-    const databaseBookName = getDatabaseBookName(bookName);
+    // Schließe Translation Dropdown
+    setShowTranslationDropdown(false);
+    
+    const currentTranslation = translations.find(t => t.name === selectedTranslation);
+    const databaseBookName = getDatabaseBookName(bookName, currentTranslation?.table || 'bibelverse');
     console.log(`Book clicked: "${bookName}" -> Database name: "${databaseBookName}"`);
     navigation.navigate('BibelContent', { 
       bookName: databaseBookName,
-      displayName: bookName 
+      displayName: bookName,
+      translationTable: currentTranslation?.table || 'bibelverse'
     });
   };
 
@@ -243,9 +246,12 @@ const BibelScreen = () => {
         });
       });
 
-      // 2. Suche in Versen (Datenbank-Suche)
+      // 2. Suche in Versen (Datenbank-Suche) - verwende die aktuelle Übersetzung
+      const currentTranslation = translations.find(t => t.name === selectedTranslation);
+      const tableName = currentTranslation?.table || 'bibelverse';
+      
       const { data: verseResults, error } = await supabase
-        .from('bibelverse')
+        .from(tableName)
         .select('buch, kapitel, vers, text')
         .ilike('text', `%${query}%`)
         .limit(10);
@@ -254,7 +260,7 @@ const BibelScreen = () => {
         verseResults.forEach(verse => {
           // Finde den Display-Namen für das Buch
           const displayBook = allBooks.find(book => 
-            getDatabaseBookName(book.name) === verse.buch
+            getDatabaseBookName(book.name, tableName) === verse.buch
           );
           
           results.push({
@@ -278,13 +284,15 @@ const BibelScreen = () => {
   };
 
   const handleSearchResultPress = (result) => {
-    const databaseBookName = getDatabaseBookName(result.bookName);
+    const currentTranslation = translations.find(t => t.name === selectedTranslation);
+    const databaseBookName = getDatabaseBookName(result.bookName, currentTranslation?.table || 'bibelverse');
     
     if (result.type === 'book') {
       // Navigiere zum Buch (Kapitel 1)
       navigation.navigate('BibelContent', { 
         bookName: databaseBookName,
-        displayName: result.bookName 
+        displayName: result.bookName,
+        translationTable: currentTranslation?.table || 'bibelverse'
       });
     } else if (result.type === 'verse') {
       // Navigiere zum spezifischen Kapitel und Vers
@@ -292,7 +300,8 @@ const BibelScreen = () => {
         bookName: databaseBookName,
         displayName: result.bookName,
         initialChapter: result.chapter,
-        highlightVerse: result.verse
+        highlightVerse: result.verse,
+        translationTable: currentTranslation?.table || 'bibelverse'
       });
     }
     
@@ -301,6 +310,21 @@ const BibelScreen = () => {
     setSearchQuery('');
     setSearchResults([]);
     Keyboard.dismiss();
+  };
+
+  const handleTranslationPress = () => {
+    if (!isSearchVisible) {
+      setShowTranslationDropdown(!showTranslationDropdown);
+    }
+  };
+
+  const handleTranslationSelect = (translation) => {
+    setSelectedTranslation(translation.name);
+    setShowTranslationDropdown(false);
+    // Suche zurücksetzen, wenn eine neue Übersetzung ausgewählt wird
+    if (searchQuery) {
+      performSearch(searchQuery);
+    }
   };
 
   const renderSearchResult = ({ item }) => (
@@ -391,7 +415,10 @@ const BibelScreen = () => {
             )}
           </View>
         ) : (
-          <TouchableOpacity style={[styles.translationSelector, { backgroundColor: colors.cardBackground }]}>
+          <TouchableOpacity 
+            style={[styles.translationSelector, { backgroundColor: colors.cardBackground }]}
+            onPress={handleTranslationPress}
+          >
             <Text style={[styles.translationText, { color: colors.primary }]}>
               {selectedTranslation}
             </Text>
@@ -410,6 +437,34 @@ const BibelScreen = () => {
           />
         </TouchableOpacity>
       </View>
+
+      {/* Translation Dropdown */}
+      {showTranslationDropdown && !isSearchVisible && (
+        <View style={[styles.translationDropdown, { backgroundColor: colors.cardBackground }]}>
+          {translations.map((translation, index) => (
+            <TouchableOpacity
+              key={index}
+              style={[
+                styles.translationOption,
+                selectedTranslation === translation.name && { backgroundColor: colors.primary + '20' }
+              ]}
+              onPress={() => handleTranslationSelect(translation)}
+            >
+              <Text 
+                style={[
+                  styles.translationOptionText, 
+                  { color: selectedTranslation === translation.name ? colors.primary : colors.text }
+                ]}
+              >
+                {translation.name}
+              </Text>
+              {selectedTranslation === translation.name && (
+                <Ionicons name="checkmark" size={20} color={colors.primary} />
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {/* Search Results - Full Screen Overlay */}
       {isSearchVisible && (
@@ -440,14 +495,20 @@ const BibelScreen = () => {
 
       {/* Books List - Hidden when search is visible */}
       {!isSearchVisible && (
-        <ScrollView 
+        <TouchableOpacity 
           style={styles.scrollView} 
-          showsVerticalScrollIndicator={false}
+          activeOpacity={1}
+          onPress={() => setShowTranslationDropdown(false)}
         >
-          {renderBookGrid(oldTestamentBooks, 'Altes Testament')}
-          {renderBookGrid(newTestamentBooks, 'Neues Testament')}
-          <View style={{ height: 100 }} />
-        </ScrollView>
+          <ScrollView 
+            showsVerticalScrollIndicator={false}
+            onScrollBeginDrag={() => setShowTranslationDropdown(false)}
+          >
+            {renderBookGrid(oldTestamentBooks, 'Altes Testament')}
+            {renderBookGrid(newTestamentBooks, 'Neues Testament')}
+            <View style={{ height: 100 }} />
+          </ScrollView>
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -578,6 +639,34 @@ const styles = StyleSheet.create({
   searchLoadingText: {
     fontSize: normalize(16),
     fontFamily: 'Montserrat_400Regular',
+  },
+  translationDropdown: {
+    marginHorizontal: 20,
+    marginTop: 5,
+    borderRadius: 15,
+    padding: 10,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  translationOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    borderRadius: 10,
+    marginVertical: 2,
+  },
+  translationOptionText: {
+    fontSize: normalize(16),
+    fontFamily: 'Montserrat_500Medium',
+    fontWeight: '500',
   },
 });
 

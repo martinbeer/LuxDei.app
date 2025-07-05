@@ -15,6 +15,7 @@ import ChatScreen from './screens/ChatScreen';
 import KircheScreen from './screens/KircheScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import BibelContentScreen from './screens/BibelContentScreen';
+import TageslesungenScreen from './screens/TageslesungenScreen';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 
 const Tab = createBottomTabNavigator();
@@ -31,6 +32,8 @@ function HomeStackNavigator({ slideAnim }) {
       <Stack.Screen name="HomeMain">
         {(props) => <HomeScreen {...props} slideAnim={slideAnim} />}
       </Stack.Screen>
+      <Stack.Screen name="Tageslesungen" component={TageslesungenScreen} />
+      <Stack.Screen name="BibelContent" component={BibelContentScreen} />
     </Stack.Navigator>
   );
 }

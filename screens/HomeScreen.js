@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Dimens
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { useNavigation } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
 const scale = width / 320; // Base width for scaling
@@ -93,6 +94,7 @@ const fetchLiturgicalData = async () => {
 
 const HomeScreen = ({ slideAnim }) => {
   const { colors } = useTheme(); // Use dynamic colors
+  const navigation = useNavigation(); // Add navigation hook
   const [liturgicalData, setLiturgicalData] = useState({
     title: 'Liturgischer Kalender',
     subtitle: '',
@@ -352,8 +354,11 @@ const HomeScreen = ({ slideAnim }) => {
             <Ionicons name="chevron-forward" size={20} color={colors.primary} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: colors.cardBackground }]}>
-            <Text style={[styles.menuItemText, { color: colors.primary }]}>Tagesevangelium</Text>
+          <TouchableOpacity 
+            style={[styles.menuItem, { backgroundColor: colors.cardBackground }]}
+            onPress={() => navigation.navigate('Tageslesungen')}
+          >
+            <Text style={[styles.menuItemText, { color: colors.primary }]}>Tageslesungen</Text>
             <Ionicons name="chevron-forward" size={20} color={colors.primary} />
           </TouchableOpacity>
 
