@@ -14,6 +14,7 @@ import GebetScreen from './screens/GebetScreen';
 import ChatScreen from './screens/ChatScreen';
 import KircheScreen from './screens/KircheScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import BibelContentScreen from './screens/BibelContentScreen';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 
 const Tab = createBottomTabNavigator();
@@ -30,6 +31,16 @@ function HomeStackNavigator({ slideAnim }) {
       <Stack.Screen name="HomeMain">
         {(props) => <HomeScreen {...props} slideAnim={slideAnim} />}
       </Stack.Screen>
+    </Stack.Navigator>
+  );
+}
+
+// Schriften Stack Navigator
+function SchriftenStackNavigator() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="SchriftenMain" component={SchriftenScreen} />
+      <Stack.Screen name="BibelContent" component={BibelContentScreen} />
     </Stack.Navigator>
   );
 }
@@ -177,7 +188,7 @@ function MainTabNavigator() {
         <Tab.Screen name="Home">
           {(props) => <HomeStackNavigator {...props} slideAnim={slideAnim} />}
         </Tab.Screen>
-        <Tab.Screen name="Schriften" component={SchriftenScreen} />
+        <Tab.Screen name="Schriften" component={SchriftenStackNavigator} />
         <Tab.Screen name="Gebet" component={GebetScreen} />
         <Tab.Screen name="Chat" component={ChatScreen} />
         <Tab.Screen name="Kirche" component={KircheScreen} />
