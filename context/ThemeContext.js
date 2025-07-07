@@ -61,12 +61,18 @@ export const ThemeProvider = ({ children }) => {
 
   // Dynamically select colors based on theme and color selection
   const getColors = () => {
-    const colorTheme = ColorPalette[selectedColor];
-    if (colorTheme) {
-      return isDarkMode ? colorTheme.dark : colorTheme.light;
+    try {
+      const colorTheme = ColorPalette[selectedColor];
+      if (colorTheme) {
+        return isDarkMode ? colorTheme.dark : colorTheme.light;
+      }
+      // Fallback to default blue theme
+      return isDarkMode ? DarkColors : LightColors;
+    } catch (error) {
+      console.error('Error in getColors:', error);
+      // Safe fallback
+      return LightColors;
     }
-    // Fallback to default blue theme
-    return isDarkMode ? DarkColors : LightColors;
   };
 
   const colors = getColors();

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import BibelScreen from './BibelScreen';
+import VäterScreen from './VäterScreen';
 
 const { width, height } = Dimensions.get('window');
 const scale = width / 320; // Base width for scaling
@@ -13,14 +14,14 @@ const normalize = (size) => {
   return Math.round(newSize);
 };
 
-const SchriftenScreen = () => {
+const SchriftenScreen = ({ navigation }) => {
   const { colors } = useTheme();
   const [activeTab, setActiveTab] = useState(0);
   const scrollViewRef = useRef(null);
 
   const tabs = [
     { id: 0, name: 'Bibel', component: BibelScreen },
-    { id: 1, name: 'Väter' },
+    { id: 1, name: 'Kirchenväter', component: VäterScreen },
     { id: 2, name: 'Konzile' },
     { id: 3, name: 'Lehrer' },
     { id: 4, name: 'Papst' },
@@ -46,7 +47,12 @@ const SchriftenScreen = () => {
     
     if (activeTabData?.component) {
       const Component = activeTabData.component;
-      return <Component />;
+      // Pass showHeader=false to VäterScreen to prevent double header
+      const props = { navigation };
+      if (Component === VäterScreen) {
+        props.showHeader = false;
+      }
+      return <Component {...props} />;
     }
     
     return (
@@ -62,6 +68,12 @@ const SchriftenScreen = () => {
     );
   };
 
+  // Get the current header title
+  const getHeaderTitle = () => {
+    const activeTabData = tabs.find(tab => tab.id === activeTab);
+    return activeTabData?.name || 'Schriften';
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
@@ -70,7 +82,7 @@ const SchriftenScreen = () => {
       <View style={[styles.headerBackground, { backgroundColor: colors.primary }]}>
         <SafeAreaView style={styles.headerSafeArea}>
           <View style={styles.header}>
-            <Text style={[styles.headerTitle, { color: colors.white }]}>Schriften</Text>
+            <Text style={[styles.headerTitle, { color: colors.white }]}>{getHeaderTitle()}</Text>
           </View>
         </SafeAreaView>
       </View>

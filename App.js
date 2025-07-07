@@ -16,7 +16,11 @@ import KircheScreen from './screens/KircheScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import BibelContentScreen from './screens/BibelContentScreen';
 import TageslesungenScreen from './screens/TageslesungenScreen';
+import VäterScreen from './screens/VäterScreen';
+import KirchenvaterDetailScreen from './screens/KirchenvaterDetailScreen';
+import KirchenvaterTextScreen from './screens/KirchenvaterTextScreen';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
+import supabaseImageManager from './utils/supabaseImageManager';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -44,6 +48,9 @@ function SchriftenStackNavigator() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="SchriftenMain" component={SchriftenScreen} />
       <Stack.Screen name="BibelContent" component={BibelContentScreen} />
+      <Stack.Screen name="Väter" component={VäterScreen} />
+      <Stack.Screen name="KirchenvaterDetail" component={KirchenvaterDetailScreen} />
+      <Stack.Screen name="KirchenvaterText" component={KirchenvaterTextScreen} />
     </Stack.Navigator>
   );
 }
@@ -299,9 +306,26 @@ export default function App() {
   });
 
   useEffect(() => {
-    if (fontsLoaded) {
-      SplashScreen.hideAsync();
-    }
+    const initializeApp = async () => {
+      if (fontsLoaded) {
+        // Starte Supabase Image Loading im Hintergrund
+        console.log('🚀 App gestartet - Lade Bilder von Supabase...');
+        
+        setTimeout(async () => {
+          try {
+            await supabaseImageManager.loadAllImages();
+            const stats = supabaseImageManager.getStats();
+            console.log(`📊 Supabase Images: ${stats.totalImages} Bilder geladen`);
+          } catch (error) {
+            console.error('❌ Fehler beim Laden der Supabase-Bilder:', error);
+          }
+        }, 500); // Kurze Verzögerung für bessere Performance
+        
+        SplashScreen.hideAsync();
+      }
+    };
+
+    initializeApp();
   }, [fontsLoaded]);
 
   if (!fontsLoaded) {
