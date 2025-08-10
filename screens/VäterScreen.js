@@ -509,28 +509,30 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
     }
   };
 
-  const renderVater = React.useCallback(({ item }) => (
-    <TouchableOpacity 
-      style={styles.vaterItemContainer}
-      onPress={() => navigation?.navigate('KirchenvaterDetail', { kirchenvater: item })}
-      activeOpacity={0.7}
-    >
-      <View style={styles.imageContainer}>
-        <Image 
-          source={item.image} 
-          style={styles.vaterImage}
-          resizeMode="cover"
-        />
-      </View>
-      <View style={[styles.nameContainer, { backgroundColor: safeColors.cardBackground }]}>
-        <ScrollingText
-          text={item.name}
-          style={[styles.vaterName, { color: safeColors.primary }]}
-          maxWidth={width * 0.6}
-        />
-      </View>
-    </TouchableOpacity>
-  ), [safeColors, navigation]);
+  const renderVater = React.useCallback(({ item, index }) => {
+    return (
+      <TouchableOpacity 
+        style={styles.vaterItemContainer}
+        onPress={() => navigation?.navigate('KirchenvaterDetail', { kirchenvater: item })}
+        activeOpacity={0.7}
+      >
+        <View style={styles.imageContainer}>
+          <Image 
+            source={item.image} 
+            style={styles.vaterImage}
+            resizeMode="cover"
+          />
+        </View>
+        <View style={[styles.nameContainer, { backgroundColor: safeColors.cardBackground }]}>
+          <ScrollingText
+            text={item.name}
+            style={[styles.vaterName, { color: safeColors.primary }]}
+            maxWidth={width * 0.6}
+          />
+        </View>
+      </TouchableOpacity>
+    );
+  }, [safeColors, navigation]);
 
   // Header-Komponente für die FlatList
   const renderListHeader = React.useCallback(() => (
@@ -750,16 +752,22 @@ const styles = StyleSheet.create({
   vaterItemContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 6,
     marginHorizontal: 8,
     paddingLeft: 8,
   },
+  vaterItemContainerReverse: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    marginHorizontal: 8,
+    paddingRight: 8,
+  },
   imageContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
     overflow: 'hidden',
-    marginRight: -35,
     zIndex: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -774,19 +782,33 @@ const styles = StyleSheet.create({
   },
   nameContainer: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingVertical: 12,
-    paddingLeft: 50,
-    borderRadius: 28,
+    borderRadius: 24,
     justifyContent: 'center',
-    minHeight: 56,
-    zIndex: 1,
+    minHeight: 52,
+    marginLeft: -35,
+    paddingLeft: 45,
+  },
+  nameContainerRight: {
+    // Bild links, Name rechts
+    marginLeft: -35,
+    paddingLeft: 50,
+    textAlign: 'left',
+  },
+  nameContainerLeft: {
+    // Name links, Bild rechts
+    marginRight: -35,
+    paddingRight: 50,
   },
   vaterName: {
     fontSize: 15,
     fontWeight: '600',
     textAlign: 'left',
     fontFamily: 'Montserrat_600SemiBold',
+  },
+  vaterNameRight: {
+    textAlign: 'right',
   },
   loadingContainer: {
     flex: 1,
@@ -815,12 +837,12 @@ const styles = StyleSheet.create({
   sortIcon: {
     marginLeft: 4,
   },
-  // Sort Dropdown Styles - EXAKT wie BibelScreen translationDropdown, aber Höhe angepasst
+  // Sort Dropdown Styles - EXAKT wie BibelScreen translationDropdown
   sortDropdown: {
-    marginHorizontal: 20,
+    marginHorizontal: 10,
     marginTop: 5,
     borderRadius: 15,
-    padding: 10,
+    padding: 5,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -829,19 +851,18 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 3.84,
     elevation: 5,
-    maxHeight: 50, // Gleiche Höhe wie searchButton
   },
   sortOption: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 6, // Reduziert von 12 auf 6
-    paddingHorizontal: 10, // Reduziert von 15 auf 10
-    borderRadius: 8, // Reduziert von 10 auf 8
-    marginVertical: 1, // Reduziert von 2 auf 1
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    marginVertical: 1,
   },
   sortOptionText: {
-    fontSize: normalize(14), // Reduziert von 16 auf 14
+    fontSize: normalize(14),
     fontFamily: 'Montserrat_500Medium',
     fontWeight: '500',
   },

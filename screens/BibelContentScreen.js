@@ -231,14 +231,7 @@ const BibelContentScreen = ({ route, navigation }) => {
         }}
         style={[
           styles.verseContainer,
-          { backgroundColor: colors.cardBackground }, // Immer einen konsistenten Hintergrund
-          isHighlighted && { 
-            backgroundColor: colors.primary + '30', // Stärkere Hervorhebung für highlighted verses
-            borderColor: colors.primary + '50',
-            borderWidth: 1,
-            borderRadius: 8, 
-            padding: 8 
-          }
+          isHighlighted && { backgroundColor: colors.primary + '20', borderRadius: 8, padding: 8 }
         ]}
       >
         <Text style={[styles.verseNumber, { color: colors.primary }]}>
@@ -423,13 +416,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 12,
     alignItems: 'flex-start',
-    padding: 12,
-    borderRadius: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
   },
   verseNumber: {
     fontSize: normalize(12),
