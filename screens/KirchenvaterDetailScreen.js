@@ -127,47 +127,56 @@ const ScrollingText = ({ text, style, maxWidth }) => {
 
 const KirchenvaterDetailScreen = ({ route, navigation }) => {
   const { colors } = useTheme();
-  const { kirchenvater } = route.params;
+  const { kirchenvater } = route.params; // { id?, name }
   const [werke, setWerke] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [authorId, setAuthorId] = useState(null);
 
   useEffect(() => {
     loadWerke();
   }, []);
 
-  // Name-Mapping für Datenbank-Konsistenz
-  const getDatabaseAuthorName = (displayName) => {
-    const nameMapping = {
-      'Augustinus von Alexandria': 'Augustinus von Hippo',
-      // Weitere Mappings können hier hinzugefügt werden
-    };
-    return nameMapping[displayName] || displayName;
-  };
-
   const loadWerke = async () => {
     try {
       setLoading(true);
-      
-      const authorName = getDatabaseAuthorName(kirchenvater.name);
-      
-      const { data, error } = await supabase
-        .from('kirchenvater')
-        .select('work_title')
-        .eq('author', authorName)
-        .order('work_title');
 
-      if (error) {
-        console.error('Fehler beim Laden der Werke:', error);
+      // 1) Author-ID anhand des Namens holen
+      const { data: authorRow, error: authorError } = await supabase
+        .from('authors')
+        .select('id, name')
+        .eq('name', kirchenvater.name)
+        .single();
+
+      if (authorError) {
+        console.error('Fehler beim Laden des Autors:', authorError);
+        setWerke([]);
         return;
       }
 
-      // Entferne Duplikate und erstelle eine eindeutige Liste der Werke
-      const uniqueWerke = [...new Set(data.map(item => item.work_title))].map(title => ({
-        title,
-        id: title.replace(/\s+/g, '_').toLowerCase()
+      setAuthorId(authorRow.id);
+
+      // 2) Werke dieses Autors laden
+      const { data: worksData, error: worksError } = await supabase
+        .from('works')
+        .select('id, german_title, latin_title, translation_type')
+        .eq('author_id', authorRow.id)
+        .order('german_title', { ascending: true });
+
+      if (worksError) {
+        console.error('Fehler beim Laden der Werke:', worksError);
+        setWerke([]);
+        return;
+      }
+
+      const mapped = (worksData || []).map(w => ({
+        id: w.id,
+        title: w.german_title || w.latin_title || 'Unbenanntes Werk',
+        translation_type: w.translation_type || null,
       }));
 
-      setWerke(uniqueWerke);
+      // Falls deutsche Titel fehlen, zusätzlich alphabetisch nach fallback sortieren
+      mapped.sort((a, b) => a.title.localeCompare(b.title, 'de'));
+      setWerke(mapped);
     } catch (error) {
       console.error('Fehler beim Laden der Werke:', error);
     } finally {
@@ -176,12 +185,13 @@ const KirchenvaterDetailScreen = ({ route, navigation }) => {
   };
 
   const handleWorkPress = (work) => {
-    // Direkt zum ersten Abschnitt navigieren
+    // Direkt zum ersten Kapitel navigieren
     navigation.navigate('KirchenvaterText', {
       kirchenvater: kirchenvater.name,
-      work: work.title,
-      section: 1,
-      text: '' // Wird im TextScreen geladen
+      authorId: authorId,
+      workId: work.id,
+      workTitle: work.title,
+      chapter: 1,
     });
   };
 

@@ -4,6 +4,9 @@
   "main": "index.js",
   "scripts": {
     "start": "expo start",
+    "start:go": "expo start --tunnel",
+    "start:lan": "expo start --lan",
+    "start:client": "expo start --dev-client",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web"
@@ -17,7 +20,6 @@
     "@react-navigation/stack": "^7.4.2",
     "@supabase/supabase-js": "^2.50.3",
     "expo": "~53.0.17",
-    "expo-file-system": "^18.1.11",
     "expo-font": "^13.3.2",
     "expo-splash-screen": "^0.30.10",
     "expo-status-bar": "~2.2.3",
@@ -26,7 +28,10 @@
     "react-native-gesture-handler": "^2.27.1",
     "react-native-safe-area-context": "^5.5.1",
     "react-native-screens": "^4.11.1",
-    "react-native-vector-icons": "^10.2.0"
+    "react-native-vector-icons": "^10.2.0",
+    "expo-audio": "~0.4.8",
+    "expo-file-system": "~18.1.11",
+    "expo-sharing": "~13.1.5"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0"

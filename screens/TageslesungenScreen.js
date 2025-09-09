@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Alert, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -25,6 +25,7 @@ const TageslesungenScreen = () => {
   const [readings, setReadings] = useState([]);
   const [selectedReading, setSelectedReading] = useState(null);
   const [selectedReadingIndex, setSelectedReadingIndex] = useState(0);
+  const isFetchingRef = useRef(false);
 
   const translations = [
     { name: 'Allioli-Arndt', table: 'bibelverse' },
@@ -35,31 +36,30 @@ const TageslesungenScreen = () => {
   // Fetch liturgical data from API
   const fetchLiturgicalData = async () => {
     try {
-      // First fetch basic liturgical data
-      const response = await fetch(`https://www.eucharistiefeier.de/lk/api.php?format=json&tag=0&info=wtbem&mg=0`);
-      const data = await response.json();
-      
-      console.log('Basic API Response:', data);
-      
+      if (isFetchingRef.current) {
+        return;
+      }
+      isFetchingRef.current = true;
+      // Fetch today's data including weekday/title/readings/link (wdtrlu)
+      const url = `https://www.eucharistiefeier.de/lk/api.php?format=json&tag=0&info=wdtrlu&dup=e&bahn=j`;
+      const response = await fetch(url);
+      const raw = await response.text();
+      const trimmed = raw.trim().replace(/^\uFEFF/, '');
+      const data = JSON.parse(trimmed);
+
+      console.log('Liturgical API Response:', data);
+
       if (data.Zelebrationen && Object.keys(data.Zelebrationen).length > 0) {
         const celebrations = Object.values(data.Zelebrationen);
-        const lastCelebration = celebrations[celebrations.length - 1];
-        setLiturgicalData(lastCelebration);
-      }
 
-      // Fetch readings with the correct API endpoint
-      const readingsResponse = await fetch(`https://www.eucharistiefeier.de/lk/api.php?format=json&tag=0&info=lesungen`);
-      const readingsData = await readingsResponse.json();
-      
-      console.log('Readings API Response:', readingsData);
-      
-      if (readingsData.Zelebrationen && Object.keys(readingsData.Zelebrationen).length > 0) {
-        const celebrations = Object.values(readingsData.Zelebrationen);
-        
-        // Take the last celebration (normal/regular liturgy)
-        const mainCelebration = celebrations[celebrations.length - 1];
-        
-        console.log('Selected celebration for readings:', mainCelebration);
+        // Heuristic: prefer the weekday entry if present (key often ends with 'w'), else take the first
+        // Fallback to last as before if ordering suggests weekday last
+        let mainCelebration = celebrations[celebrations.length - 1];
+        const weekday = celebrations.find(c => (c?.Tl || '').toLowerCase().includes('woche im jahreskreis'));
+        if (weekday) mainCelebration = weekday;
+
+        setLiturgicalData(mainCelebration);
+        console.log('Selected celebration:', mainCelebration);
         parseReadings(mainCelebration);
       } else {
         // Create empty placeholders if no data
@@ -67,10 +67,12 @@ const TageslesungenScreen = () => {
       }
     } catch (error) {
       console.error('Error fetching liturgical data:', error);
-      Alert.alert('Fehler', 'Konnte liturgische Daten nicht laden');
+  // Optional: surface to UI if needed
+  // Alert.alert('Fehler', 'Konnte liturgische Daten nicht laden');
       parseReadings({}); // Create empty placeholders on error
     } finally {
       setLoading(false);
+  isFetchingRef.current = false;
     }
   };
 
@@ -159,7 +161,8 @@ const TageslesungenScreen = () => {
       const match = part.match(/^(.+?)\s+(\d+)[,:]\s*(.+)$/);
       if (match) {
         const [, bookAbbr, chapter, verses] = match;
-        const fullBookName = mapBookAbbreviation(bookAbbr.trim());
+        const abbrNorm = bookAbbr.replace(/\.$/, '').trim();
+        const fullBookName = mapBookAbbreviation(abbrNorm);
         
         if (fullBookName) {
           allReferences.push({
@@ -230,7 +233,14 @@ const TageslesungenScreen = () => {
         let refVerses = [];
         
         for (const range of verseRanges) {
-          const trimmedRange = range.trim();
+          let trimmedRange = range.trim();
+          
+          // Remove letters from verse references (e.g., "3a" becomes "3", "3b-4" becomes "3-4")
+          trimmedRange = trimmedRange.replace(/[a-zA-Z]/g, '');
+          
+          // Skip empty ranges
+          if (!trimmedRange || trimmedRange === '') continue;
+          
           let startVerse = 1, endVerse = null;
           
           if (trimmedRange.includes('-')) {
@@ -242,7 +252,18 @@ const TageslesungenScreen = () => {
             endVerse = startVerse;
           }
           
-          if (startVerse && endVerse) {
+          console.log('Processed range:', range, '->', trimmedRange, 'verses:', startVerse, 'to', endVerse);
+          
+          console.log('Query params:', {
+            table: tableName,
+            book: databaseBookName,
+            chapter: ref.chapter,
+            startVerse,
+            endVerse,
+            hasTestament: tableName === 'bibelverse_schoenigh' || tableName === 'bibelverse_einheit'
+          });
+          
+          if (startVerse && endVerse && !isNaN(startVerse) && !isNaN(endVerse)) {
             let query = supabase
               .from(tableName)
               .select('*')
@@ -251,11 +272,61 @@ const TageslesungenScreen = () => {
               .gte('vers', startVerse)
               .lte('vers', endVerse);
             
-            const { data, error } = await query.order('vers');
+            // Add testament filter for tables that have it (Schöningh und Einheitsübersetzung)
+            if (tableName === 'bibelverse_schoenigh' || tableName === 'bibelverse_einheit') {
+              const newTestamentAbbr = new Set([
+                'Mt','Mk','Lk','Joh','Apg','Röm','1Kor','2Kor','Gal','Eph','Phil','Kol',
+                '1Thess','2Thess','1Tim','2Tim','Tit','Phlm','Hebr','Jak','1Petr','2Petr',
+                '1Joh','2Joh','3Joh','Jud','Offb'
+              ]);
+              const newTestamentFullNames = new Set([
+                'Matthäusevangelium','Markusevangelium','Lukasevangelium','Johannesevangelium','Apostelgeschichte',
+                'Römerbrief','1. Korintherbrief','2. Korintherbrief','Galaterbrief','Epheserbrief','Philipperbrief',
+                'Kolosserbrief','1. Thessalonicherbrief','2. Thessalonicherbrief','1. Timotheusbrief','2. Timotheusbrief',
+                'Titusbrief','Philemonbrief','Hebräerbrief','Jakobusbrief','1. Petrusbrief','2. Petrusbrief',
+                '1. Johannesbrief','2. Johannesbrief','3. Johannesbrief','Judasbrief','Offenbarung des Johannes'
+              ]);
+              const isNewTestament = newTestamentAbbr.has(databaseBookName) || newTestamentFullNames.has(databaseBookName);
+              query = query.eq('testament', isNewTestament ? 'NT' : 'OT');
+            }
+            
+            let { data, error } = await query.order('vers');
+            
+            // Allioli uses old psalm numbering; if we query Die Psalmen 66 v16+ and get empty, try previous psalm (65)
+            if (
+              (!error && (!data || data.length === 0)) &&
+              tableName === 'bibelverse' &&
+              databaseBookName === 'Die Psalmen' &&
+              typeof ref.chapter === 'number' &&
+              (startVerse >= 16 || endVerse >= 16)
+            ) {
+              console.log('No results for Psalmen', ref.chapter, 'trying old numbering (chapter - 1)');
+              const altQuery = supabase
+                .from(tableName)
+                .select('*')
+                .eq('buch', databaseBookName)
+                .eq('kapitel', ref.chapter - 1)
+                .gte('vers', startVerse)
+                .lte('vers', endVerse);
+              const altRes = await altQuery.order('vers');
+              data = altRes.data;
+              error = altRes.error;
+            }
+            
+            console.log('Query result:', { 
+              dataLength: data?.length, 
+              error,
+              firstVerse: data?.[0]?.vers,
+              lastVerse: data?.[data && data.length ? data.length - 1 : 0]?.vers
+            });
             
             if (!error && data) {
               refVerses = [...refVerses, ...data];
+            } else if (error) {
+              console.error('Supabase query error:', error);
             }
+          } else {
+            console.warn('Invalid verse numbers:', { startVerse, endVerse });
           }
         }
         
@@ -263,6 +334,8 @@ const TageslesungenScreen = () => {
         const uniqueVerses = refVerses.filter((verse, index, self) => 
           index === self.findIndex(v => v.vers === verse.vers)
         ).sort((a, b) => a.vers - b.vers);
+
+        console.log('Final verses for', ref.book, ':', uniqueVerses.length, 'verses');
         
         // Add chapter info to verses for display
         const versesWithChapter = uniqueVerses.map(verse => ({
@@ -292,8 +365,38 @@ const TageslesungenScreen = () => {
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <SafeAreaView style={styles.safeArea}>
-          <View style={[styles.header, { backgroundColor: colors.primary }]}>
+        <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
+        <View style={[styles.headerBackground, { backgroundColor: colors.primary }]}>
+          <SafeAreaView style={styles.headerSafeArea}>
+            <View style={styles.header}>
+              <TouchableOpacity 
+                onPress={() => navigation.goBack()}
+                style={styles.backButton}
+              >
+                <Ionicons name="arrow-back" size={24} color={colors.white} />
+              </TouchableOpacity>
+              <Text style={[styles.headerTitle, { color: colors.white }]}>Tageslesungen</Text>
+              <View style={styles.headerRight} />
+            </View>
+          </SafeAreaView>
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+            Lade Tageslesungen...
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
+      {/* Header with extended background */}
+      <View style={[styles.headerBackground, { backgroundColor: colors.primary }]}>
+  <SafeAreaView style={styles.headerSafeArea}>
+          <View style={styles.header}>
             <TouchableOpacity 
               onPress={() => navigation.goBack()}
               style={styles.backButton}
@@ -303,37 +406,15 @@ const TageslesungenScreen = () => {
             <Text style={[styles.headerTitle, { color: colors.white }]}>Tageslesungen</Text>
             <View style={styles.headerRight} />
           </View>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-              Lade Tageslesungen...
-            </Text>
-          </View>
         </SafeAreaView>
       </View>
-    );
-  }
 
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <SafeAreaView style={styles.safeArea}>
-        {/* Header */}
-        <View style={[styles.header, { backgroundColor: colors.primary }]}>
-          <TouchableOpacity 
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-          >
-            <Ionicons name="arrow-back" size={24} color={colors.white} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.white }]}>Tageslesungen</Text>
-          <View style={styles.headerRight} />
-        </View>
-
-        {/* Content */}
+  {/* Content */}
         <ScrollView 
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
+          onScrollBeginDrag={() => setShowTranslationDropdown(false)}
         >
           {/* Date Card */}
           {liturgicalData && (
@@ -355,13 +436,13 @@ const TageslesungenScreen = () => {
               style={[styles.translationSelector, { backgroundColor: colors.cardBackground }]}
               onPress={() => setShowTranslationDropdown(!showTranslationDropdown)}
             >
-              <Text style={[styles.translationText, { color: colors.text }]}>
+              <Text style={[styles.translationText, { color: colors.primary }]}>
                 {selectedTranslation}
               </Text>
               <Ionicons 
-                name={showTranslationDropdown ? "chevron-up" : "chevron-down"} 
-                size={20} 
-                color={colors.text} 
+                name={showTranslationDropdown ? "chevron-up" : "chevron-down"}
+                size={20}
+                color={colors.primary}
               />
             </TouchableOpacity>
 
@@ -411,7 +492,7 @@ const TageslesungenScreen = () => {
                   >
                     <Text style={[
                       styles.readingButtonText,
-                      { color: colors.text },
+                      { color: colors.primary },
                       selectedReadingIndex === index && { color: colors.white }
                     ]}>
                       {reading.title}
@@ -431,7 +512,6 @@ const TageslesungenScreen = () => {
             />
           )}
         </ScrollView>
-      </SafeAreaView>
     </View>
   );
 };
@@ -440,13 +520,19 @@ const TageslesungenScreen = () => {
 const ReadingContent = ({ reading, selectedTranslation, colors }) => {
   const [verses, setVerses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [displayRef, setDisplayRef] = useState('');
 
   // Parse bible reference and handle complex references
   const parseBibleReference = (reference) => {
     if (!reference) return null;
     
     // Remove common prefixes and clean up
-    let cleaned = reference.replace(/^(Lesung aus|Evangelium nach|Psalm)\s+/i, '').trim();
+    let cleaned = reference
+      .replace(/^vgl\.\s*/i, '') // drop "vgl. " prefix if present
+      .replace(/^(Lesung aus|Evangelium nach|Psalm)\s+/i, '') // standard leading labels
+      .trim();
+    // Normalize dashes to hyphen
+    cleaned = cleaned.replace(/[–—−]/g, '-');
     
     console.log('ReadingContent - Parsing reference:', reference, '-> cleaned:', cleaned);
     
@@ -456,11 +542,12 @@ const ReadingContent = ({ reading, selectedTranslation, colors }) => {
       cleaned = cleaned.replace(/\s*\(R:[^)]*\)/, '');
     }
     
-    // Handle psalm with alternative numbering like "Ps 135 (134)"
-    if (cleaned.match(/^Ps\s+\d+\s*\(\d+\)/)) {
-      // Use the first psalm number, ignore the one in parentheses
-      cleaned = cleaned.replace(/\s*\(\d+\)/, '');
+    // Handle psalm with alternative numbering like "Ps 135 (134)" or letters e.g. "(113A)": keep first number only
+    if (/^Ps\s+\d+/.test(cleaned)) {
+      cleaned = cleaned.replace(/^(Ps\s+\d+)\s*\([^)]*\)/, '$1');
     }
+    // Replace German "u." (und) in verse list with point separator for parsing
+    cleaned = cleaned.replace(/\su\.\s*/g, '.');
     
     console.log('ReadingContent - After psalm cleanup:', cleaned);
     
@@ -474,23 +561,44 @@ const ReadingContent = ({ reading, selectedTranslation, colors }) => {
       // Try to match book chapter,verse pattern
       const match = part.match(/^(.+?)\s+(\d+)[,:]\s*(.+)$/);
       if (match) {
-        const [, bookAbbr, chapter, verses] = match;
-        const fullBookName = mapBookAbbreviation(bookAbbr.trim());
+  const [, bookAbbr, chapter, versesRaw] = match;
+        // Normalize abbreviation (drop trailing dot) before mapping
+        const abbrNorm = bookAbbr.replace(/\.$/, '').trim();
+        const fullBookName = mapBookAbbreviation(abbrNorm);
+        // Normalize spaces around hyphens and commas in verses
+        let verses = (versesRaw || '').replace(/[–—−]/g, '-');
+        verses = verses.replace(/\s*-\s*/g, '-');
+        verses = verses.replace(/,\s*/g, ', ');
         
         console.log('ReadingContent - Matched book reference:', {
           original: part,
-          bookAbbr: bookAbbr.trim(),
+          bookAbbr: abbrNorm,
           fullBookName,
           chapter,
           verses
         });
         
         if (fullBookName) {
-          allReferences.push({
-            book: fullBookName,
-            chapter: parseInt(chapter),
-            verses: verses.trim()
-          });
+          // Detect cross-chapter range like "21 - 19, 1". Avoid matching within-chapter lists like "3-9, 12".
+          // Use the raw verses string for detection and require no dot separators in the same part.
+          const raw = (versesRaw || '').trim();
+          // Require spaces around hyphen in the raw string to denote cross-chapter (e.g., "21 - 19, 1")
+          const crossStrict = /^(\d+)\s+-\s+(\d+)\s*,\s*(\d+)$/.exec(raw);
+          const hasDotSeparator = raw.includes('.');
+          if (crossStrict && !hasDotSeparator) {
+            const startV = parseInt(crossStrict[1]);
+            const nextChap = parseInt(crossStrict[2]);
+            const nextV = parseInt(crossStrict[3]);
+            // Push open-ended range for current chapter, and explicit verse for next chapter
+            allReferences.push({ book: fullBookName, chapter: parseInt(chapter), verses: `${startV}-` });
+            allReferences.push({ book: fullBookName, chapter: nextChap, verses: `${nextV}` });
+          } else {
+            allReferences.push({
+              book: fullBookName,
+              chapter: parseInt(chapter),
+              verses: verses.trim()
+            });
+          }
         }
       } else {
         // Handle cases like "2, 1-3" (continuation of previous book)
@@ -517,6 +625,29 @@ const ReadingContent = ({ reading, selectedTranslation, colors }) => {
     
     console.log('ReadingContent - Final parsed references:', allReferences);
     return allReferences.length > 0 ? allReferences : null;
+  };
+
+  // Build a cleaned display reference string; for psalms remove (R: ..) and alt numbering
+  const formatReferenceForDisplay = (originalRef) => {
+    if (!originalRef) return '';
+    if (reading.type === 'psalm') {
+      let ref = originalRef;
+      // Remove response and parentheses numbering after Ps N (keep main psalm number)
+      ref = ref.replace(/\s*\(R:[^)]*\)/, '');
+      ref = ref.replace(/^(Ps\s+\d+)\s*\([^)]*\)/, '$1');
+      // Normalize dashes and spaces
+      ref = ref.replace(/[–—−]/g, '-');
+      // Replace " u. " with ". " and collapse spaces
+      ref = ref.replace(/\su\.\s*/g, '.');
+      // Remove letter suffixes from verse numbers (e.g., 3a -> 3)
+      // but only in the verse-list part after the comma
+      ref = ref.replace(/(,\s*)([^,]+)/, (m, p1, p2) => p1 + p2.replace(/[a-zA-Z]/g, ''));
+      // Tidy multiple dots
+      ref = ref.replace(/\.{2,}/g, '.');
+      return ref.trim();
+    }
+    // Non-psalm: leave as-is (already human friendly from API)
+    return originalRef;
   };
 
   // Map book abbreviations to full names
@@ -578,7 +709,7 @@ const ReadingContent = ({ reading, selectedTranslation, colors }) => {
         console.log('Parsing verse ranges for:', ref.book, ref.chapter, ref.verses);
         console.log('Verse ranges:', verseRanges);
         
-        for (const range of verseRanges) {
+    for (const range of verseRanges) {
           let trimmedRange = range.trim();
           
           // Remove letters from verse references (e.g., "3a" becomes "3", "3b-4" becomes "3-4")
@@ -590,9 +721,10 @@ const ReadingContent = ({ reading, selectedTranslation, colors }) => {
           let startVerse = 1, endVerse = null;
           
           if (trimmedRange.includes('-')) {
-            const verseParts = trimmedRange.split('-');
-            startVerse = parseInt(verseParts[0].trim());
-            endVerse = parseInt(verseParts[1].trim());
+      const verseParts = trimmedRange.split('-');
+      startVerse = parseInt(verseParts[0].trim());
+      const rhs = (verseParts[1] || '').trim();
+      endVerse = rhs === '' ? null : parseInt(rhs);
           } else {
             startVerse = parseInt(trimmedRange);
             endVerse = startVerse;
@@ -609,34 +741,65 @@ const ReadingContent = ({ reading, selectedTranslation, colors }) => {
             hasTestament: tableName === 'bibelverse_schoenigh' || tableName === 'bibelverse_einheit'
           });
           
-          if (startVerse && endVerse && !isNaN(startVerse) && !isNaN(endVerse)) {
+          if (startVerse && !isNaN(startVerse)) {
             let query = supabase
               .from(tableName)
               .select('*')
               .eq('buch', databaseBookName)
               .eq('kapitel', ref.chapter)
-              .gte('vers', startVerse)
-              .lte('vers', endVerse);
+              .gte('vers', startVerse);
+            if (endVerse !== null && !isNaN(endVerse)) {
+              query = query.lte('vers', endVerse);
+            }
             
-            // Add testament filter for tables that have it (Schöningh and Einheitsübersetzung)
+            // Add testament filter for tables that have it (Schöningh und Einheitsübersetzung)
             if (tableName === 'bibelverse_schoenigh' || tableName === 'bibelverse_einheit') {
-              // Determine testament based on book name
-              const isNewTestament = [
-                'Mt', 'Mk', 'Lk', 'Joh', 'Apg', 'Röm', '1Kor', '2Kor', 'Gal', 'Eph', 'Phil', 'Kol', 
-                '1Thess', '2Thess', '1Tim', '2Tim', 'Tit', 'Phlm', 'Hebr', 'Jak', '1Petr', '2Petr', 
-                '1Joh', '2Joh', '3Joh', 'Jud', 'Offb'
-              ].includes(databaseBookName);
-              
+              const newTestamentAbbr = new Set([
+                'Mt','Mk','Lk','Joh','Apg','Röm','1Kor','2Kor','Gal','Eph','Phil','Kol',
+                '1Thess','2Thess','1Tim','2Tim','Tit','Phlm','Hebr','Jak','1Petr','2Petr',
+                '1Joh','2Joh','3Joh','Jud','Offb'
+              ]);
+              const newTestamentFullNames = new Set([
+                'Matthäusevangelium','Markusevangelium','Lukasevangelium','Johannesevangelium','Apostelgeschichte',
+                'Römerbrief','1. Korintherbrief','2. Korintherbrief','Galaterbrief','Epheserbrief','Philipperbrief',
+                'Kolosserbrief','1. Thessalonicherbrief','2. Thessalonicherbrief','1. Timotheusbrief','2. Timotheusbrief',
+                'Titusbrief','Philemonbrief','Hebräerbrief','Jakobusbrief','1. Petrusbrief','2. Petrusbrief',
+                '1. Johannesbrief','2. Johannesbrief','3. Johannesbrief','Judasbrief','Offenbarung des Johannes'
+              ]);
+              const isNewTestament = newTestamentAbbr.has(databaseBookName) || newTestamentFullNames.has(databaseBookName);
               query = query.eq('testament', isNewTestament ? 'NT' : 'OT');
             }
             
-            const { data, error } = await query.order('vers');
+            let { data, error } = await query.order('vers');
+            
+            // Allioli uses old psalm numbering; if we query Die Psalmen 66 v16+ and get empty, try previous psalm (65)
+            if (
+              (!error && (!data || data.length === 0)) &&
+              tableName === 'bibelverse' &&
+              databaseBookName === 'Die Psalmen' &&
+              typeof ref.chapter === 'number' &&
+              (startVerse >= 16 || endVerse >= 16)
+            ) {
+              console.log('No results for Psalmen', ref.chapter, 'trying old numbering (chapter - 1)');
+              let altQuery = supabase
+                .from(tableName)
+                .select('*')
+                .eq('buch', databaseBookName)
+                .eq('kapitel', ref.chapter - 1)
+                .gte('vers', startVerse);
+              if (endVerse !== null && !isNaN(endVerse)) {
+                altQuery = altQuery.lte('vers', endVerse);
+              }
+              const altRes = await altQuery.order('vers');
+              data = altRes.data;
+              error = altRes.error;
+            }
             
             console.log('Query result:', { 
               dataLength: data?.length, 
               error,
               firstVerse: data?.[0]?.vers,
-              lastVerse: data?.[data.length - 1]?.vers
+              lastVerse: data?.[data && data.length ? data.length - 1 : 0]?.vers
             });
             
             if (!error && data) {
@@ -673,25 +836,38 @@ const ReadingContent = ({ reading, selectedTranslation, colors }) => {
   };
 
   useEffect(() => {
+    let isActive = true;
     const loadVerses = async () => {
       setLoading(true);
-      
-      if (!reading.reference || reading.reference.trim() === '') {
-        setVerses([]);
-        setLoading(false);
-        return;
-      }
+      try {
+        if (!reading.reference || reading.reference.trim() === '') {
+          if (isActive) {
+            setVerses([]);
+            setDisplayRef('');
+          }
+          return;
+        }
 
-      const references = parseBibleReference(reading.reference);
-      if (references) {
-        const fetchedVerses = await fetchVersesForReading(references);
-        setVerses(fetchedVerses);
+        // Prepare display reference string (esp. for Psalmen)
+        if (isActive) setDisplayRef(formatReferenceForDisplay(reading.reference));
+
+        const references = parseBibleReference(reading.reference);
+        if (references) {
+          const fetchedVerses = await fetchVersesForReading(references);
+          if (isActive) setVerses(fetchedVerses);
+        } else {
+          if (isActive) setVerses([]);
+        }
+      } catch (e) {
+        console.error('ReadingContent - loadVerses error:', e);
+        if (isActive) setVerses([]);
+      } finally {
+        if (isActive) setLoading(false);
       }
-      
-      setLoading(false);
     };
 
     loadVerses();
+    return () => { isActive = false; };
   }, [reading, selectedTranslation]);
 
   if (loading) {
@@ -732,21 +908,22 @@ const ReadingContent = ({ reading, selectedTranslation, colors }) => {
       {/* Reference Header */}
       <View style={[styles.referenceHeader, { backgroundColor: colors.cardBackground }]}>
         <Text style={[styles.referenceText, { color: colors.primary }]}>
-          {reading.reference}
+          {displayRef || reading.reference}
         </Text>
       </View>
 
-      {/* Verses as continuous text */}
+      {/* Verses rendered like BibelContentScreen with numbers */}
       <View style={[styles.versesTextContainer, { backgroundColor: colors.cardBackground }]}>
-        <Text style={[styles.versesText, { color: colors.text }]}>
-          {verses.map((verse, index) => {
-            let text = verse.text.trim();
-            // Remove forward slashes that appear in some translations
-            text = text.replace(/\//g, '');
-            // Just return the text without verse numbers
-            return text;
-          }).join(' ')}
-        </Text>
+        {verses.map((verse) => (
+          <View key={verse.id} style={{ flexDirection: 'row', marginBottom: 12, alignItems: 'flex-start' }}>
+            <Text style={[styles.verseNumber, { color: colors.primary }]}>
+              {verse.vers}
+            </Text>
+            <Text style={[styles.versesText, { color: colors.text }]}>
+              {String(verse.text || '').replace(/\//g, '').trim()}
+            </Text>
+          </View>
+        ))}
       </View>
     </View>
   );
@@ -758,6 +935,15 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+  },
+  headerBackground: {
+    backgroundColor: '#000', // will be overridden by dynamic color
+    paddingTop: 0,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+  },
+  headerSafeArea: {
+    backgroundColor: 'transparent',
   },
   header: {
     flexDirection: 'row',
@@ -775,11 +961,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
-    flex: 1,
-    fontSize: normalize(18),
-    fontFamily: 'Montserrat_600SemiBold',
-    fontWeight: '600',
-    textAlign: 'center',
+  flex: 1,
+  fontSize: normalize(18),
+  fontFamily: 'Montserrat_600SemiBold',
+  fontWeight: '600',
+  textAlign: 'center',
   },
   headerRight: {
     width: 40,
@@ -815,33 +1001,42 @@ const styles = StyleSheet.create({
   },
   translationSelector: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 15,
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderRadius: 25,
     marginBottom: 10,
   },
   translationText: {
     fontSize: normalize(16),
     fontFamily: 'Montserrat_500Medium',
-    fontWeight: '500',
+    marginRight: 10,
+    flex: 1,
   },
   translationDropdown: {
+    marginHorizontal: 20,
+    marginTop: 5,
     borderRadius: 15,
-    paddingVertical: 8,
-    elevation: 3,
+    padding: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.1,
     shadowRadius: 3.84,
+    elevation: 5,
   },
   translationOption: {
-    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingVertical: 12,
+    paddingHorizontal: 15,
+    borderRadius: 10,
+    marginVertical: 2,
   },
   translationOptionText: {
-    fontSize: normalize(14),
-    fontFamily: 'Montserrat_400Regular',
+    fontSize: normalize(16),
+    fontFamily: 'Montserrat_500Medium',
+    fontWeight: '500',
   },
   readingsSection: {
     marginBottom: 20,
@@ -856,16 +1051,16 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   readingButtonsContainer: {
-    paddingHorizontal: 5,
-    gap: 12,
+  paddingHorizontal: 5,
+  gap: 8,
   },
   readingButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 20,
-    minWidth: 120,
-    alignItems: 'center',
-    marginRight: 10,
+  paddingHorizontal: 16,
+  paddingVertical: 10,
+  borderRadius: 20,
+  minWidth: 110,
+  alignItems: 'center',
+  marginRight: 6,
   },
   readingButtonText: {
     fontSize: normalize(13),
@@ -893,10 +1088,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   versesText: {
-    fontSize: normalize(15),
+    fontSize: normalize(16),
     fontFamily: 'Montserrat_400Regular',
     lineHeight: normalize(24),
-    textAlign: 'justify',
+    flex: 1,
+  },
+  verseNumber: {
+    fontSize: normalize(12),
+    fontFamily: 'Montserrat_600SemiBold',
+    fontWeight: '600',
+    marginRight: 8,
+    marginTop: 2,
+    minWidth: 25,
   },
   loadingContainer: {
     flex: 1,

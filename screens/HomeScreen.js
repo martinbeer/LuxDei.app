@@ -45,20 +45,28 @@ const getTimeBasedGreeting = () => {
 // Function to fetch liturgical data from API
 const fetchLiturgicalData = async () => {
   try {
-    // Use tag=0 to get today's data (API uses 0 for current day)
-    const response = await fetch(`https://www.eucharistiefeier.de/lk/api.php?format=json&tag=0&info=wtbem&mg=0`);
-    const data = await response.json();
-    
+    // Prefer stable flags: wdtrlu gives weekday, title, readings, link; dup=e includes duplicate variants; bahn=j picks cycle
+    const url = `https://www.eucharistiefeier.de/lk/api.php?format=json&tag=0&info=wdtrlu&dup=e&bahn=j`;
+    const response = await fetch(url);
+
+    // Some gateways occasionally prepend a debug char; parse defensively
+    const raw = await response.text();
+    const trimmed = raw.trim().replace(/^\uFEFF/, ''); // strip BOM if any
+    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+      throw new Error(`Unexpected response: ${trimmed.slice(0, 50)}`);
+    }
+    const data = JSON.parse(trimmed);
+
     console.log('API Response:', data); // Debug log
-    
+
     if (data.Zelebrationen && Object.keys(data.Zelebrationen).length > 0) {
       // Get all celebrations and take the LAST one (normal liturgy)
       const celebrations = Object.values(data.Zelebrationen);
       const lastCelebration = celebrations[celebrations.length - 1];
-      
+
       console.log('All celebrations:', celebrations); // Debug log
       console.log('Selected (last) celebration:', lastCelebration); // Debug log
-      
+
       if (lastCelebration) {
         return {
           title: lastCelebration.Tl || 'Liturgischer Kalender',
@@ -67,24 +75,27 @@ const fetchLiturgicalData = async () => {
         };
       }
     }
-    
-    // Fallback: try to get data with different parameters
-    const fallbackResponse = await fetch(`https://www.eucharistiefeier.de/lk/api.php?format=json&tag=0&info=wdt`);
-    const fallbackData = await fallbackResponse.json();
-    
+
+    // Fallback: try simplified flags
+    const fallbackUrl = `https://www.eucharistiefeier.de/lk/api.php?format=json&tag=0&info=wdt`;
+    const fallbackRes = await fetch(fallbackUrl);
+    const fallbackRaw = await fallbackRes.text();
+    const fallbackTrimmed = fallbackRaw.trim().replace(/^\uFEFF/, '');
+    const fallbackData = JSON.parse(fallbackTrimmed);
+
     console.log('Fallback API Response:', fallbackData); // Debug log
-    
+
     if (fallbackData.Zelebrationen && Object.keys(fallbackData.Zelebrationen).length > 0) {
       const celebrations = Object.values(fallbackData.Zelebrationen);
       const lastCelebration = celebrations[celebrations.length - 1];
-      
+
       return {
         title: lastCelebration?.Tl || 'Liturgischer Kalender',
         subtitle: lastCelebration?.Bem || '',
         allCelebrations: celebrations
       };
     }
-    
+
     return { title: 'Liturgischer Kalender', subtitle: '', allCelebrations: [] };
   } catch (error) {
     console.error('Error fetching liturgical data:', error);

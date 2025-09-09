@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { View, TouchableOpacity, Dimensions, PanResponder, Animated, Text } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
@@ -11,6 +11,9 @@ import * as SplashScreen from 'expo-splash-screen';
 import HomeScreen from './screens/HomeScreen';
 import SchriftenScreen from './screens/SchriftenScreen';
 import GebetScreen from './screens/GebetScreen';
+import GebetDetailScreen from './screens/GebetDetailScreen';
+import RosenkranzScreen from './screens/RosenkranzScreen';
+import RosenkranzTutorialScreen from './screens/RosenkranzTutorialScreen';
 import ChatScreen from './screens/ChatScreen';
 import KircheScreen from './screens/KircheScreen';
 import SettingsScreen from './screens/SettingsScreen';
@@ -51,6 +54,18 @@ function SchriftenStackNavigator() {
       <Stack.Screen name="Väter" component={VäterScreen} />
       <Stack.Screen name="KirchenvaterDetail" component={KirchenvaterDetailScreen} />
       <Stack.Screen name="KirchenvaterText" component={KirchenvaterTextScreen} />
+    </Stack.Navigator>
+  );
+}
+
+// Gebet Stack Navigator
+function GebetStackNavigator() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="GebetMain" component={GebetScreen} />
+      <Stack.Screen name="GebetDetail" component={GebetDetailScreen} />
+  <Stack.Screen name="Rosenkranz" component={RosenkranzScreen} />
+  <Stack.Screen name="RosenkranzTutorial" component={RosenkranzTutorialScreen} />
     </Stack.Navigator>
   );
 }
@@ -199,7 +214,38 @@ function MainTabNavigator() {
           {(props) => <HomeStackNavigator {...props} slideAnim={slideAnim} />}
         </Tab.Screen>
         <Tab.Screen name="Schriften" component={SchriftenStackNavigator} />
-        <Tab.Screen name="Gebet" component={GebetScreen} />
+        <Tab.Screen
+          name="Gebet"
+          component={GebetStackNavigator}
+          options={({ route }) => {
+            const routeName = getFocusedRouteNameFromRoute(route) ?? 'GebetMain';
+            const baseStyle = {
+              backgroundColor: colors.tabBar,
+              paddingBottom: 15,
+              paddingTop: 15,
+              height: 85,
+              borderTopLeftRadius: 25,
+              borderTopRightRadius: 25,
+              borderTopWidth: 3,
+              borderLeftWidth: 3,
+              borderRightWidth: 3,
+              borderColor: colors.cardBackground,
+              borderBottomWidth: 0,
+              shadowOpacity: 0,
+              elevation: 0,
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+            };
+            return {
+              tabBarStyle: [
+                baseStyle,
+                routeName === 'GebetDetail' && { display: 'none' },
+              ],
+            };
+          }}
+        />
         <Tab.Screen name="Chat" component={ChatScreen} />
         <Tab.Screen name="Kirche" component={KircheScreen} />
       </Tab.Navigator>

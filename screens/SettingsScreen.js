@@ -13,7 +13,7 @@ const normalize = (size) => {
 };
 
 const SettingsScreen = ({ navigation, onClose, hideHeader }) => {
-  const { colors, isDarkMode, selectedColor, toggleTheme, changeColor, ColorPalette } = useTheme();
+  const { colors, isDarkMode, selectedColor, toggleTheme, changeColor, ColorPalette, disablePrayerTimer, setDisablePrayerTimer } = useTheme();
 
   const handleClose = () => {
     if (onClose) {
@@ -99,7 +99,20 @@ const SettingsScreen = ({ navigation, onClose, hideHeader }) => {
         {/* More Settings */}
         <View style={styles.settingsGroup}>
           <Text style={[styles.groupTitle, { color: colors.primary }]}>Allgemein</Text>
-          
+
+          <View style={[styles.settingItem, { backgroundColor: colors.cardBackground }]}>
+            <View style={styles.settingItemLeft}>
+              <Ionicons name="timer" size={20} color={colors.primary} />
+              <Text style={[styles.settingItemText, { color: colors.primary }]}>Gebets-Timer</Text>
+            </View>
+            <Switch
+              value={!disablePrayerTimer} // ON = timer enabled
+              onValueChange={(v) => setDisablePrayerTimer(!v)}
+              trackColor={{ false: '#767577', true: colors.primary }}
+              thumbColor={!disablePrayerTimer ? colors.white : '#f4f3f4'}
+            />
+          </View>
+
           <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.settingItemLeft}>
               <Ionicons name="notifications" size={20} color={colors.primary} />

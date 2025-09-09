@@ -9,6 +9,10 @@ class SupabaseImageManager {
       loaded: 0,
       errors: 0
     };
+
+  // Primärer und alternativer Bucketname (um Migrations-/Setup-Differenzen abzufangen)
+  this.primaryBucket = 'bilder';
+  this.fallbackBucket = 'kirchenvaeter-images';
   }
 
   async loadAllImages() {
@@ -19,7 +23,7 @@ class SupabaseImageManager {
     }
 
     try {
-      console.log('🔍 Lade Bilder aus Supabase Storage...');
+  console.log('🔍 Lade Bilder aus Supabase Storage...');
       
       // Da bucket listing nicht funktioniert (RLS policy issue), verwende bekannte Dateinamen
       const knownImages = [
@@ -53,32 +57,53 @@ class SupabaseImageManager {
       // Generiere URLs für alle bekannten Bilder
       const imagePromises = knownImages.map(async (filename, index) => {
         try {
-          // Generiere öffentliche URL direkt für den Dateinamen
-          const { data } = supabase.storage
-            .from('bilder')
+          // 1) Versuche primären Bucket
+          let { data } = supabase.storage
+            .from(this.primaryBucket)
             .getPublicUrl(filename);
 
-          if (data?.publicUrl) {
+          let publicUrl = data?.publicUrl || null;
+
+          // 2) Prüfe, ob URL erreichbar ist (HEAD)
+          let reachable = publicUrl ? await this.checkUrlExists(publicUrl) : false;
+
+          // 3) Falls nicht erreichbar, versuche Fallback-Bucket
+          if (!reachable) {
+            const alt = supabase.storage
+              .from(this.fallbackBucket)
+              .getPublicUrl(filename);
+            if (alt?.data?.publicUrl) {
+              const ok = await this.checkUrlExists(alt.data.publicUrl);
+              if (ok) {
+                publicUrl = alt.data.publicUrl;
+                reachable = true;
+                console.log(`↪️ Nutze alternativen Bucket für ${filename}: ${this.fallbackBucket}`);
+              }
+            }
+          }
+
+          if (reachable && publicUrl) {
             const name = this.extractNameFromFilename(filename);
             const description = this.generateDescription(name);
-            
+
             this.stats.loaded++;
-            
-            console.log(`✅ Bild geladen: ${name} -> ${data.publicUrl}`);
-            
+
+            console.log(`✅ Bild erreichbar: ${name} -> ${publicUrl}`);
+
             return {
               id: index + 1,
-              name: name,
-              url: data.publicUrl,
-              filename: filename,
-              description: description,
+              name,
+              url: publicUrl,
+              filename,
+              description,
               isSupabaseImage: true
             };
-          } else {
-            this.stats.errors++;
-            console.warn(`⚠️ Keine URL für Datei: ${filename}`);
-            return null;
           }
+
+          // Nicht erreichbar
+          this.stats.errors++;
+          console.warn(`⚠️ Datei nicht erreichbar in Supabase: ${filename}`);
+          return null;
         } catch (error) {
           this.stats.errors++;
           console.error(`❌ Fehler bei Datei ${filename}:`, error);
@@ -96,12 +121,30 @@ class SupabaseImageManager {
       console.log(`✅ ${this.images.length} Bilder erfolgreich geladen`);
       console.log('📊 Stats:', this.stats);
 
+      if (this.images.length === 0) {
+        console.log('ℹ️ Keine erreichbaren Supabase-Bilder gefunden. Die App sollte auf lokale Assets zurückfallen.');
+      }
+
       return this.images;
 
     } catch (error) {
       console.error('❌ Allgemeiner Fehler beim Laden der Bilder:', error);
       this.stats.errors++;
       return [];
+    }
+  }
+
+  // Prüfe, ob eine öffentliche URL erreichbar ist (HEAD-Request, kurze Timeouts)
+  async checkUrlExists(url) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    try {
+      const res = await fetch(url, { method: 'HEAD', signal: controller.signal });
+      return res.ok;
+    } catch (_) {
+      return false;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

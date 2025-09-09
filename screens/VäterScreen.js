@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -9,13 +9,12 @@ import {
   Dimensions,
   Animated,
   ActivityIndicator,
-  Image,
   TextInput
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
-import supabaseImageManager from '../utils/supabaseImageManager';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '../lib/supabase';
 
 const { width } = Dimensions.get('window');
 const scale = width / 320; // Base width for scaling
@@ -132,7 +131,7 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
   const { colors } = useTheme();
   const [kirchenväterData, setKirchenväterData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
-  const [loadingImages, setLoadingImages] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [sortType, setSortType] = useState('alphabet'); // 'alphabet', 'year-asc', 'year-desc', 'default'
@@ -148,48 +147,42 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
     textSecondary: '#666666'
   };
 
-  // Lade alle Bilder einmalig beim Komponenten-Mount
+  // Lade Autoren aus neuer Schema-Tabelle "authors"
   useEffect(() => {
-    const loadSupabaseImages = async () => {
+    const loadAuthors = async () => {
       try {
-        setLoadingImages(true);
-        console.log('🚀 Lade Kirchenväter-Bilder von Supabase...');
-        
-        const supabaseImages = await supabaseImageManager.loadAllImages();
-        
-        if (supabaseImages.length > 0) {
-          // Erstelle Kirchenväter-Daten mit Supabase-URLs
-          const supabaseKirchenväter = supabaseImages.map((img, index) => ({
-            id: index + 1,
-            name: img.name,
-            image: { uri: img.url }, // Supabase URL
-            description: img.description,
-            supabaseId: img.id,
-            isSupabaseImage: true
-          }));
-          
-          const sortedData = sortData(supabaseKirchenväter, sortType);
-          setKirchenväterData(supabaseKirchenväter);
-          setFilteredData(sortedData);
-          console.log(`✅ ${supabaseKirchenväter.length} Kirchenväter mit Supabase-Bildern geladen`);
-        } else {
-          // Falls keine Supabase-Bilder, verwende lokale als Fallback
-          console.log('⚠️ Keine Supabase-Bilder gefunden, verwende lokale Bilder');
-          const sortedLocalData = sortData(localKirchenväter, sortType);
-          setKirchenväterData(localKirchenväter);
-          setFilteredData(sortedLocalData);
-        }
+        setLoading(true);
+        console.log('🚀 Lade Autoren (Kirchenväter) aus Supabase...');
+
+        const { data, error } = await supabase
+          .from('authors')
+          .select('id, name, name_detail, birth_year, death_year')
+          .order('name', { ascending: true });
+
+        if (error) throw error;
+
+        const authors = (data || []).map((a) => ({
+          id: a.id,
+          name: a.name,
+          description: a.name_detail || 'Kirchenvater',
+          birth_year: a.birth_year || null,
+          death_year: a.death_year || null,
+        }));
+
+        const sortedData = sortData(authors, sortType);
+        setKirchenväterData(authors);
+        setFilteredData(sortedData);
+        console.log(`✅ ${authors.length} Autoren geladen`);
       } catch (error) {
-        console.error('❌ Fehler beim Laden der Supabase-Bilder:', error);
-        const sortedLocalData = sortData(localKirchenväter, sortType);
-        setKirchenväterData(localKirchenväter);
-        setFilteredData(sortedLocalData);
+        console.error('❌ Fehler beim Laden der Autoren:', error);
+        setKirchenväterData([]);
+        setFilteredData([]);
       } finally {
-        setLoadingImages(false);
+        setLoading(false);
       }
     };
 
-    loadSupabaseImages();
+    loadAuthors();
   }, []);
 
   // Sortierung anwenden wenn sortType sich ändert
@@ -198,249 +191,16 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
       let dataToSort = searchText.trim() === '' ? kirchenväterData : 
         kirchenväterData.filter(vater => {
           const searchTerm = searchText.toLowerCase();
-          const works = getWorksForName(vater.name).toLowerCase();
-          
-          return vater.name.toLowerCase().includes(searchTerm) ||
-                 vater.description.toLowerCase().includes(searchTerm) ||
-                 works.includes(searchTerm);
+          return (
+            vater.name?.toLowerCase().includes(searchTerm) ||
+            vater.description?.toLowerCase().includes(searchTerm)
+          );
         });
       
       const sortedData = sortData(dataToSort, sortType);
       setFilteredData(sortedData);
     }
   }, [sortType, kirchenväterData]);
-
-  // Hilfsfunktion für Beschreibungen (Fallback für lokale Bilder)
-  const getDescriptionForName = (name) => {
-    const descriptions = {
-      'Athanasius von Alexandria': 'Verteidiger der Orthodoxie',
-      'Basilius von Cäsarea': 'Großer Kappadozier',
-      'Clemens von Rom': 'Früher Bischof von Rom',
-      'Cyprian von Karthago': 'Märtyrer und Kirchenvater',
-      'Augustinus von Hippo': 'Kirchenvater und Theologe',
-      'Cyrill von Alexandria': 'Theologe und Kirchenlehrer',
-      'Ephraem der Syrer': 'Syrischer Kirchenvater',
-      'Eusebius von Caesarea': 'Kirchenhistoriker',
-      'Fulgentius von Ruspe': 'Nordafrikanischer Theologe',
-      'Hilarius von Poitiers': 'Athanasius des Westens',
-      'Martin von Tours': 'Heiliger und Bischof',
-      'Hieronymus': 'Bibelübersetzer',
-      'Hippolyt von Rom': 'Früher Kirchenvater',
-      'Ignatius von Antiochien': 'Apostolischer Vater',
-      'Johannes Chrysostomus': 'Goldmund-Prediger',
-      'Justin der Märtyrer': 'Frühchristlicher Apologet',
-      'Maximus Confessor': 'Byzantinischer Theologe',
-      'Origenes': 'Alexandrinischer Theologe',
-      'Palladius': 'Mönchshistoriker',
-      'Paulinus von Nola': 'Dichter und Bischof',
-      'Rufinus von Aquileia': 'Übersetzer und Theologe',
-      'Tertullian': 'Lateinischer Kirchenvater',
-      'Theodoret von Cyrus': 'Theologe und Kirchenhistoriker'
-    };
-    return descriptions[name] || 'Kirchenvater';
-  };
-
-  // Hilfsfunktion für Lebensjahre (für Sortierung)
-  const getYearForName = (name) => {
-    const years = {
-      'Athanasius von Alexandria': 373, // ca. 300-373
-      'Basilius von Cäsarea': 379, // ca. 330-379
-      'Clemens von Rom': 99, // ca. 50-99
-      'Cyprian von Karthago': 258, // ca. 200-258
-      'Augustinus von Hippo': 430, // 354-430
-      'Cyrill von Alexandria': 444, // ca. 376-444
-      'Ephraem der Syrer': 373, // ca. 306-373
-      'Eusebius von Caesarea': 339, // ca. 260-339
-      'Fulgentius von Ruspe': 533, // ca. 468-533
-      'Hilarius von Poitiers': 367, // ca. 315-367
-      'Martin von Tours': 397, // ca. 316-397
-      'Hieronymus': 420, // ca. 347-420
-      'Hippolyt von Rom': 235, // ca. 170-235
-      'Ignatius von Antiochien': 110, // ca. 35-110
-      'Johannes Chrysostomus': 407, // ca. 349-407
-      'Justin der Märtyrer': 165, // ca. 100-165
-      'Maximus Confessor': 662, // ca. 580-662
-      'Origenes': 254, // ca. 185-254
-      'Palladius': 430, // ca. 363-430
-      'Paulinus von Nola': 431, // ca. 354-431
-      'Rufinus von Aquileia': 411, // ca. 345-411
-      'Tertullian': 220, // ca. 160-220
-      'Theodoret von Cyrus': 457 // ca. 393-457
-    };
-    return years[name] || 999; // Default für unbekannte Jahre
-  };
-
-  // Hilfsfunktion für Hauptwerke/Textstellen (für erweiterte Suche)
-  const getWorksForName = (name) => {
-    const works = {
-      'Athanasius von Alexandria': 'Vita Antonii Leben des Antonius Gegen die Arianer Briefe an Serapion Osterfestbriefe',
-      'Basilius von Cäsarea': 'Hexaemeron Über den Heiligen Geist Mönchsregeln Briefe Liturgie des Basilius',
-      'Clemens von Rom': 'Erster Clemensbrief Zweiter Clemensbrief Apostolische Konstitutionen',
-      'Cyprian von Karthago': 'Über die Einheit der Kirche Briefe De lapsis An Donatus',
-      'Augustinus von Hippo': 'Confessiones Bekenntnisse De civitate Dei Gottesstaat De trinitate Über die Dreieinigkeit Retractationes',
-      'Cyrill von Alexandria': 'Thesaurus Gegen Julian Osterfestbriefe Johanneskommentar',
-      'Ephraem der Syrer': 'Carmina Nisibena Hymnen Kommentare zur Heiligen Schrift Sermones',
-      'Eusebius von Caesarea': 'Kirchengeschichte Historia ecclesiastica Praeparatio evangelica Chronikon',
-      'Fulgentius von Ruspe': 'Contra Fabianum De fide ad Petrum Briefe',
-      'Hilarius von Poitiers': 'De trinitate Über die Dreieinigkeit Psalmenkommentare Gegen Auxentius',
-      'Martin von Tours': 'Vita Martini von Sulpicius Severus Briefe Dialoge',
-      'Hieronymus': 'Vulgata Bibelübersetzung De viris illustribus Briefe Chronik Contra Jovinianum',
-      'Hippolyt von Rom': 'Apostolische Tradition Refutatio omnium haeresium Gegen alle Häresien',
-      'Ignatius von Antiochien': 'Sieben Briefe an Gemeinden Märtyrerakte',
-      'Johannes Chrysostomus': 'Homilien Predigten De sacerdotio Über das Priestertum Gegen die Juden',
-      'Justin der Märtyrer': 'Erste Apologie Zweite Apologie Dialog mit Tryphon',
-      'Maximus Confessor': 'Mystagogica Ambigua Quaestiones ad Thalassium',
-      'Origenes': 'Hexapla De principiis Gegen Celsus Homilien Kommentare',
-      'Palladius': 'Historia Lausiaca Mönchsgeschichte Dialog über Johannes Chrysostomus',
-      'Paulinus von Nola': 'Carmina Gedichte Briefe Vita Felicis',
-      'Rufinus von Aquileia': 'Übersetzungen des Origenes Kirchengeschichte Symbolum',
-      'Tertullian': 'Apologeticum De baptismo Gegen Marcion De praescriptione haereticorum',
-      'Theodoret von Cyrus': 'Kirchengeschichte Häretikergeschichte Bibelkommentare'
-    };
-    return works[name] || '';
-  };
-
-  // Lokale Kirchenväter-Daten als Fallback
-  const localKirchenväter = useMemo(() => [
-    {
-      id: 1,
-      name: 'Athanasius von Alexandria',
-      image: require('../assets/Ikone_Athanasius_von_Alexandria.jpg'),
-      description: 'Verteidiger der Orthodoxie'
-    },
-    {
-      id: 2,
-      name: 'Basilius von Cäsarea',
-      image: require('../assets/Basil_of_Caesarea.jpg'),
-      description: 'Großer Kappadozier'
-    },
-    {
-      id: 3,
-      name: 'Clemens von Rom',
-      image: require('../assets/500px-Clemens_I.jpg'),
-      description: 'Früher Bischof von Rom'
-    },
-    {
-      id: 4,
-      name: 'Cyprian von Karthago',
-      image: require('../assets/Cyprian_von_Karthago2.jpg'),
-      description: 'Märtyrer und Kirchenvater'
-    },
-    {
-      id: 5,
-      name: 'Augustinus von Hippo',
-      image: require('../assets/augustinus-alexandria.jpg'),
-      description: 'Kirchenvater und Theologe'
-    },
-    {
-      id: 6,
-      name: 'Cyrill von Alexandria',
-      image: require('../assets/Cyril_of_Alexandria.jpg'),
-      description: 'Theologe und Kirchenlehrer'
-    },
-    {
-      id: 7,
-      name: 'Ephraem der Syrer',
-      image: require('../assets/ephraem-der-syrer3778906.jpg'),
-      description: 'Syrischer Kirchenvater'
-    },
-    {
-      id: 8,
-      name: 'Eusebius von Caesarea',
-      image: require('../assets/Eusebius_von_Caesarea.jpg'),
-      description: 'Kirchenhistoriker'
-    },
-    {
-      id: 9,
-      name: 'Fulgentius von Ruspe',
-      image: require('../assets/250px-Fulgentius_von_Ruspe_17Jh.jpg'),
-      description: 'Nordafrikanischer Theologe'
-    },
-    {
-      id: 10,
-      name: 'Hilarius von Poitiers',
-      image: require('../assets/300px-Hl._Hilarius_von_Poitiers.png'),
-      description: 'Athanasius des Westens'
-    },
-    {
-      id: 11,
-      name: 'Martin von Tours',
-      image: require('../assets/300px-Hl._Martin_von_Tours.jpg'),
-      description: 'Heiliger und Bischof'
-    },
-    {
-      id: 12,
-      name: 'Hieronymus',
-      image: require('../assets/hiernoymus.jpg'),
-      description: 'Bibelübersetzer'
-    },
-    {
-      id: 13,
-      name: 'Hippolyt von Rom',
-      image: require('../assets/hippolyt.jpg'),
-      description: 'Früher Kirchenvater'
-    },
-    {
-      id: 14,
-      name: 'Ignatius von Antiochien',
-      image: require('../assets/ignatius_von_antiochien.jpg'),
-      description: 'Apostolischer Vater'
-    },
-    {
-      id: 15,
-      name: 'Johannes Chrysostomus',
-      image: require('../assets/johannes chysostomus.jpg'),
-      description: 'Goldmund-Prediger'
-    },
-    {
-      id: 16,
-      name: 'Justin der Märtyrer',
-      image: require('../assets/justin.jpg'),
-      description: 'Frühchristlicher Apologet'
-    },
-    {
-      id: 17,
-      name: 'Maximus Confessor',
-      image: require('../assets/maximus.jpg'),
-      description: 'Byzantinischer Theologe'
-    },
-    {
-      id: 18,
-      name: 'Origenes',
-      image: require('../assets/origenes.jpg'),
-      description: 'Alexandrinischer Theologe'
-    },
-    {
-      id: 19,
-      name: 'Palladius',
-      image: require('../assets/heilige-palladius-van-helenopolis-62b05f-200.jpg'),
-      description: 'Mönchshistoriker'
-    },
-    {
-      id: 20,
-      name: 'Paulinus von Nola',
-      image: require('../assets/paulinus von nola.jpg'),
-      description: 'Dichter und Bischof'
-    },
-    {
-      id: 21,
-      name: 'Rufinus von Aquileia',
-      image: require('../assets/rufinus.jpg'),
-      description: 'Übersetzer und Theologe'
-    },
-    {
-      id: 22,
-      name: 'Tertullian',
-      image: require('../assets/tertullian_3.jpg'),
-      description: 'Lateinischer Kirchenvater'
-    },
-    {
-      id: 23,
-      name: 'Theodoret von Cyrus',
-      image: require('../assets/Theodoret_von_Kyrrhos.jpg'),
-      description: 'Theologe und Kirchenhistoriker'
-    }
-  ], []);
 
   // Sortierfunktion
   const sortData = (data, type) => {
@@ -449,9 +209,9 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
       case 'alphabet':
         return sorted.sort((a, b) => a.name.localeCompare(b.name, 'de'));
       case 'year-asc':
-        return sorted.sort((a, b) => getYearForName(a.name) - getYearForName(b.name));
+        return sorted.sort((a, b) => (a.death_year ?? 99999) - (b.death_year ?? 99999));
       case 'year-desc':
-        return sorted.sort((a, b) => getYearForName(b.name) - getYearForName(a.name));
+        return sorted.sort((a, b) => (b.death_year ?? -99999) - (a.death_year ?? -99999));
       case 'default':
       default:
         return sorted; // Originale Reihenfolge beibehalten
@@ -467,11 +227,10 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
     } else {
       filtered = kirchenväterData.filter(vater => {
         const searchTerm = text.toLowerCase();
-        const works = getWorksForName(vater.name).toLowerCase();
-        
-        return vater.name.toLowerCase().includes(searchTerm) ||
-               vater.description.toLowerCase().includes(searchTerm) ||
-               works.includes(searchTerm);
+        return (
+          vater.name?.toLowerCase().includes(searchTerm) ||
+          vater.description?.toLowerCase().includes(searchTerm)
+        );
       });
     }
     // Sortierung anwenden
@@ -488,11 +247,10 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
     let dataToSort = searchText.trim() === '' ? kirchenväterData : 
       kirchenväterData.filter(vater => {
         const searchTerm = searchText.toLowerCase();
-        const works = getWorksForName(vater.name).toLowerCase();
-        
-        return vater.name.toLowerCase().includes(searchTerm) ||
-               vater.description.toLowerCase().includes(searchTerm) ||
-               works.includes(searchTerm);
+        return (
+          vater.name?.toLowerCase().includes(searchTerm) ||
+          vater.description?.toLowerCase().includes(searchTerm)
+        );
       });
     
     const sortedData = sortData(dataToSort, newSortType);
@@ -517,11 +275,8 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
         activeOpacity={0.7}
       >
         <View style={styles.imageContainer}>
-          <Image 
-            source={item.image} 
-            style={styles.vaterImage}
-            resizeMode="cover"
-          />
+          {/* Grauer Kreis als Platzhalter für Bilder */}
+          <View style={styles.grayCircle} />
         </View>
         <View style={[styles.nameContainer, { backgroundColor: safeColors.cardBackground }]}>
           <ScrollingText
@@ -646,11 +401,11 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
       )}
 
       {/* Kirchenväter Liste */}
-      {loadingImages ? (
+  {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={safeColors.primary} />
           <Text style={[styles.loadingText, { color: safeColors.textSecondary }]}>
-            🌐 Lade Bilder von Supabase...
+    Lade Autoren...
           </Text>
         </View>
       ) : (
@@ -775,10 +530,11 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 6,
   },
-  vaterImage: {
+  grayCircle: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#f0f0f0',
+    borderRadius: 35,
+    backgroundColor: '#D1D5DB', // grauer Kreis
   },
   nameContainer: {
     flex: 1,

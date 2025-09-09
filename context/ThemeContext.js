@@ -16,6 +16,7 @@ export const ThemeProvider = ({ children }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [selectedColor, setSelectedColor] = useState('blue');
   const [isLoading, setIsLoading] = useState(true);
+  const [disablePrayerTimer, setDisablePrayerTimer] = useState(false);
 
   // Load theme preference from storage
   useEffect(() => {
@@ -26,12 +27,16 @@ export const ThemeProvider = ({ children }) => {
     try {
       const savedTheme = await AsyncStorage.getItem('isDarkMode');
       const savedColor = await AsyncStorage.getItem('selectedColor');
+      const savedDisablePrayerTimer = await AsyncStorage.getItem('disablePrayerTimer');
       
       if (savedTheme !== null) {
         setIsDarkMode(JSON.parse(savedTheme));
       }
       if (savedColor !== null) {
         setSelectedColor(savedColor);
+      }
+      if (savedDisablePrayerTimer !== null) {
+        setDisablePrayerTimer(JSON.parse(savedDisablePrayerTimer));
       }
     } catch (error) {
       console.error('Error loading theme preference:', error);
@@ -56,6 +61,16 @@ export const ThemeProvider = ({ children }) => {
       await AsyncStorage.setItem('selectedColor', colorKey);
     } catch (error) {
       console.error('Error saving color preference:', error);
+    }
+  };
+
+  const togglePrayerTimerDisabled = async () => {
+    try {
+      const next = !disablePrayerTimer;
+      setDisablePrayerTimer(next);
+      await AsyncStorage.setItem('disablePrayerTimer', JSON.stringify(next));
+    } catch (error) {
+      console.error('Error saving prayer timer setting:', error);
     }
   };
 
@@ -85,6 +100,9 @@ export const ThemeProvider = ({ children }) => {
     changeColor,
     isLoading,
     ColorPalette,
+  disablePrayerTimer,
+  setDisablePrayerTimer,
+  togglePrayerTimerDisabled,
   };
 
   return (

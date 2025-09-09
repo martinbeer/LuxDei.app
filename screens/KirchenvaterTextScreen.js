@@ -23,198 +23,86 @@ const normalize = (size) => {
 
 const KirchenvaterTextScreen = ({ route, navigation }) => {
   const { colors } = useTheme();
-  const { kirchenvater, work, section: initialSection, text: initialText } = route.params;
-  
-  const [currentSection, setCurrentSection] = useState(initialSection || 1);
-  const [sections, setSections] = useState([]);
+  const { kirchenvater, authorId, workId, workTitle, chapter: initialChapter = 1 } = route.params;
+
+  const [currentChapter, setCurrentChapter] = useState(initialChapter || 1);
+  const [verses, setVerses] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [maxSection, setMaxSection] = useState(1);
-  const [highlightedSection, setHighlightedSection] = useState(initialSection || null);
-  
-  // Cache für Abschnitte
-  const [sectionCache, setSectionCache] = useState(new Map());
-  const [prefetchingSections, setPrefetchingSections] = useState(new Set());
+  const [maxChapter, setMaxChapter] = useState(1);
   
   // Ref für ScrollView
   const scrollViewRef = useRef(null);
   const sectionRefs = useRef(new Map());
 
   useEffect(() => {
-    fetchSectionData();
-  }, [kirchenvater, work, currentSection]);
+    fetchChapterData();
+  }, [authorId, workId, currentChapter]);
 
-  // Name-Mapping für Datenbank-Konsistenz
-  const getDatabaseAuthorName = (displayName) => {
-    const nameMapping = {
-      'Augustinus von Alexandria': 'Augustinus von Hippo',
-      // Weitere Mappings können hier hinzugefügt werden
-    };
-    return nameMapping[displayName] || displayName;
-  };
-
-  // Cache-Schlüssel generieren
-  const getCacheKey = (author, workTitle, section) => `${author}_${workTitle}_${section}`;
-
-  // Einzelnen Abschnitt laden
-  const fetchSingleSection = async (author, workTitle, section) => {
-    const cacheKey = getCacheKey(author, workTitle, section);
-    
-    if (sectionCache.has(cacheKey)) {
-      return sectionCache.get(cacheKey);
-    }
-
-    if (prefetchingSections.has(cacheKey)) {
-      return null;
-    }
-
-    try {
-      setPrefetchingSections(prev => new Set(prev).add(cacheKey));
-      
-      const { data, error } = await supabase
-        .from('kirchenvater')
-        .select('*')
-        .eq('author', author)
-        .eq('work_title', workTitle)
-        .eq('section', section)
-        .single();
-
-      if (error) {
-        console.error(`Error fetching section ${section}:`, error);
-        return null;
-      }
-
-      setSectionCache(prev => new Map(prev).set(cacheKey, data));
-      return data;
-    } catch (error) {
-      console.error(`Error fetching section ${section}:`, error);
-      return null;
-    } finally {
-      setPrefetchingSections(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(cacheKey);
-        return newSet;
-      });
-    }
-  };
-
-  // Angrenzende Abschnitte vorab laden
-  const prefetchAdjacentSections = async (author, workTitle, section, maxSec) => {
-    const prefetchPromises = [];
-    
-    // Vorherigen Abschnitt laden
-    if (section > 1) {
-      const prevSection = section - 1;
-      const prevKey = getCacheKey(author, workTitle, prevSection);
-      if (!sectionCache.has(prevKey) && !prefetchingSections.has(prevKey)) {
-        prefetchPromises.push(fetchSingleSection(author, workTitle, prevSection));
-      }
-    }
-    
-    // Nächsten Abschnitt laden
-    if (section < maxSec) {
-      const nextSection = section + 1;
-      const nextKey = getCacheKey(author, workTitle, nextSection);
-      if (!sectionCache.has(nextKey) && !prefetchingSections.has(nextKey)) {
-        prefetchPromises.push(fetchSingleSection(author, workTitle, nextSection));
-      }
-    }
-    
-    if (prefetchPromises.length > 0) {
-      await Promise.all(prefetchPromises);
-    }
-  };
-
-  const fetchSectionData = async () => {
+  const fetchChapterData = async () => {
     try {
       setLoading(true);
-      
-      const authorName = getDatabaseAuthorName(kirchenvater);
-      const cacheKey = getCacheKey(authorName, work, currentSection);
-      
-      let currentSectionData = null;
-      let maxSectionData = null;
-      
-      if (sectionCache.has(cacheKey)) {
-        currentSectionData = sectionCache.get(cacheKey);
-        setSections([currentSectionData]);
-        setLoading(false);
-      }
 
-      // Max Section nur einmal laden
-      if (maxSection === 1) {
-        const { data, error: maxSectionError } = await supabase
-          .from('kirchenvater')
-          .select('section')
-          .eq('author', authorName)
-          .eq('work_title', work)
-          .order('section', { ascending: false })
+      // 1) Max Chapter ermitteln
+      if (maxChapter === 1) {
+        const { data: maxChapRow, error: maxErr } = await supabase
+          .from('chapters')
+          .select('chapter_number')
+          .eq('work_id', workId)
+          .order('chapter_number', { ascending: false })
           .limit(1);
-
-        if (maxSectionError) {
-          console.error('Error fetching max section:', maxSectionError);
-        } else if (data && data.length > 0) {
-          maxSectionData = data;
-          setMaxSection(data[0].section);
+        if (maxErr) {
+          console.error('Error fetching max chapter:', maxErr);
+        } else if (maxChapRow && maxChapRow.length > 0) {
+          setMaxChapter(maxChapRow[0].chapter_number);
         }
       }
 
-      // Aktuellen Abschnitt laden falls nicht im Cache
-      if (!currentSectionData) {
-        currentSectionData = await fetchSingleSection(authorName, work, currentSection);
-        if (currentSectionData) {
-          setSections([currentSectionData]);
-        }
+      // 2) Kapitel-ID anhand Nummer holen
+      const { data: chapterRow, error: chapErr } = await supabase
+        .from('chapters')
+        .select('id')
+        .eq('work_id', workId)
+        .eq('chapter_number', currentChapter)
+        .single();
+
+      if (chapErr) {
+        console.error('Error fetching chapter id:', chapErr);
+        setVerses([]);
         setLoading(false);
+        return;
       }
 
-      // Angrenzende Abschnitte vorab laden
-      const maxSec = maxSection > 1 ? maxSection : (maxSectionData?.[0]?.section || 1);
-      setTimeout(() => {
-        prefetchAdjacentSections(authorName, work, currentSection, maxSec);
-      }, 100);
+      // 3) Verse dieses Kapitels laden
+      const { data: versesData, error: versesErr } = await supabase
+        .from('verses')
+        .select('verse_number, text')
+        .eq('chapter_id', chapterRow.id)
+        .order('position', { ascending: true });
 
+      if (versesErr) {
+        console.error('Error fetching verses:', versesErr);
+        setVerses([]);
+      } else {
+        setVerses(versesData || []);
+      }
     } catch (error) {
       console.error('Error:', error);
       Alert.alert('Fehler', `Daten konnten nicht geladen werden: ${error.message}`);
+    } finally {
       setLoading(false);
     }
   };
 
-  const handlePreviousSection = () => {
-    if (currentSection > 1) {
-      const newSection = currentSection - 1;
-      setCurrentSection(newSection);
-      setHighlightedSection(null);
+  const handlePreviousChapter = () => {
+    if (currentChapter > 1) {
+      setCurrentChapter((c) => c - 1);
     }
   };
 
-  const handleNextSection = () => {
-    if (currentSection < maxSection) {
-      const newSection = currentSection + 1;
-      setCurrentSection(newSection);
-      setHighlightedSection(null);
+  const handleNextChapter = () => {
+    if (currentChapter < maxChapter) {
+      setCurrentChapter((c) => c + 1);
     }
-  };
-
-  const renderSection = (sectionData) => {
-    if (!sectionData) return null;
-    
-    const isHighlighted = highlightedSection && parseInt(sectionData.section) === parseInt(highlightedSection);
-    
-    return (
-      <View 
-        key={sectionData.section} 
-        style={[
-          styles.sectionContainer,
-          { backgroundColor: colors.cardBackground },
-          isHighlighted && { backgroundColor: colors.primary + '20', borderRadius: 8, padding: 8 }
-        ]}
-      >
-        <Text style={[styles.sectionText, { color: colors.text }]}>
-          {sectionData.text}
-        </Text>
-      </View>
-    );
   };
 
   return (
@@ -229,12 +117,12 @@ const KirchenvaterTextScreen = ({ route, navigation }) => {
             <Ionicons name="arrow-back" size={24} color={colors.white} />
           </TouchableOpacity>
           
-          <View style={styles.headerTitle}>
+      <View style={styles.headerTitle}>
             <Text style={[styles.authorTitle, { color: colors.white }]}>
               {kirchenvater}
             </Text>
             <Text style={[styles.workTitle, { color: colors.white }]}>
-              {work} - Abschnitt {currentSection}
+        {workTitle} - Kapitel {currentChapter}
             </Text>
           </View>
           
@@ -244,38 +132,38 @@ const KirchenvaterTextScreen = ({ route, navigation }) => {
         {/* Section Navigation */}
         <View style={[styles.sectionNav, { backgroundColor: colors.cardBackground }]}>
           <TouchableOpacity
-            onPress={handlePreviousSection}
-            disabled={currentSection === 1}
+            onPress={handlePreviousChapter}
+            disabled={currentChapter === 1}
             style={[
               styles.navButton,
-              { backgroundColor: currentSection === 1 ? colors.background : colors.primary }
+              { backgroundColor: currentChapter === 1 ? colors.background : colors.primary }
             ]}
           >
             <Ionicons 
               name="chevron-back" 
               size={20} 
-              color={currentSection === 1 ? colors.textSecondary : colors.white} 
+              color={currentChapter === 1 ? colors.textSecondary : colors.white} 
             />
           </TouchableOpacity>
 
           <View style={styles.sectionInfo}>
             <Text style={[styles.sectionNavText, { color: colors.primary }]}>
-              Abschnitt {currentSection} von {maxSection}
+              Kapitel {currentChapter} von {maxChapter}
             </Text>
           </View>
 
           <TouchableOpacity
-            onPress={handleNextSection}
-            disabled={currentSection === maxSection}
+            onPress={handleNextChapter}
+            disabled={currentChapter === maxChapter}
             style={[
               styles.navButton,
-              { backgroundColor: currentSection === maxSection ? colors.background : colors.primary }
+              { backgroundColor: currentChapter === maxChapter ? colors.background : colors.primary }
             ]}
           >
             <Ionicons 
               name="chevron-forward" 
               size={20} 
-              color={currentSection === maxSection ? colors.textSecondary : colors.white} 
+              color={currentChapter === maxChapter ? colors.textSecondary : colors.white} 
             />
           </TouchableOpacity>
         </View>
@@ -295,13 +183,17 @@ const KirchenvaterTextScreen = ({ route, navigation }) => {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
           >
-            {sections.length > 0 ? (
-              sections.map(renderSection)
+            {verses.length > 0 ? (
+              verses.map((v) => (
+                <View key={`v-${v.verse_number}`} style={[styles.sectionContainer, { backgroundColor: colors.cardBackground }]}>
+                  <Text style={[styles.sectionText, { color: colors.text }]}>[{v.verse_number}] {v.text}</Text>
+                </View>
+              ))
             ) : (
               <View style={styles.noDataContainer}>
                 <Ionicons name="document-text-outline" size={60} color={colors.cardBackground} />
                 <Text style={[styles.noDataText, { color: colors.textSecondary }]}>
-                  Kein Text für diesen Abschnitt gefunden
+                  Kein Text für dieses Kapitel gefunden
                 </Text>
               </View>
             )}
