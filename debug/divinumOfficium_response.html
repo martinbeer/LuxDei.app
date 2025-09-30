@@ -1,0 +1,401 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML><HEAD>
+
+  <META NAME="Resource-type" CONTENT="Document">
+  <META NAME="description" CONTENT="Divine Office">
+  <META NAME="keywords" CONTENT="Divine Office, Breviarium, Liturgy, Traditional, Zsolozsma">
+  <META NAME="Copyright" CONTENT="Like GNU">
+  <meta name="color-scheme" content="dark light">
+  <STYLE>
+    /* https://www.30secondsofcode.org/css/s/offscreen/ */
+    .offscreen {
+      border: 0;
+      clip: rect(0 0 0 0);
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      padding: 0;
+      position: absolute;
+      width: 1px;
+    }
+    h1, h2 {
+      text-align: center;
+      font-weight: normal;
+    }
+    h2 {
+      margin-top: 4ex;
+      color: maroon;
+      font-size: 112%;
+      font-weight: bold;
+      font-style: italic;
+    }
+    p {
+      color: black;
+    }
+    a:link { color: blue; }
+    a:visited { color: blue; }
+    body {
+      background: #eeeeee;
+    }
+    .contrastbg { background: white; }
+    .nigra { color: black; }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: black;
+        color: white;
+      }
+      table { color: white; }
+      a:link { color: #AFAFFF; }
+      a:visited { color: #AFAFFF; }
+      p { color: white; }
+      .contrastbg {
+        background: #3F3F3F;
+        color: white;
+      }
+      .nigra {  color: white;  }
+      }
+  </STYLE>
+  <TITLE>Divinum Officium </TITLE>
+<SCRIPT TYPE='text/JavaScript' LANGUAGE='JavaScript1.2'>
+
+//position
+function startup() {
+  if (!"") {
+    var d = new Date();
+    var day = d.getDate();
+    document.forms[0].browsertime.value = (d.getMonth() + 1) + "-" + day + "-" + d.getFullYear();
+    if (!"") {
+      var a = (day > 12) ? "-+" : (day < 12) ? "--" : "";
+      document.forms[0].date.value = document.forms[0].browsertime.value + a;
+      if (a) document.forms[0].submit();
+    }
+  }
+  var i = 1;
+  while (i <= 0) {
+    a = document.getElementById('L' + i);
+    i++;
+    if (a) a.scrollIntoView();
+  }
+}
+
+//call a setup table
+function pset(p) {
+  var pc = document.createElement("input");
+  pc.setAttribute("type", "hidden");
+  pc.setAttribute("name", "pcommand");
+  pc.setAttribute("value", "pray" + document.forms[0].command.value);
+  document.forms[0].appendChild(pc);
+  document.forms[0].command.value = "setup" + p;
+  document.forms[0].submit();
+}
+
+//call an individual hora
+function hset(p, d) {
+  clearradio();
+
+  if (p != 'Laudes' && d) {
+    document.forms[0].date.value = d;
+    document.forms[0].caller.value = 1;
+  }
+  if (0) {document.forms[0].caller.value = 1;}
+  document.forms[0].command.value = "pray" + p;
+  document.forms[0].action = "officium.pl";
+  document.forms[0].target = "_self"
+  document.forms[0].submit();
+}
+
+// call appendix
+function appendix(a) {
+  document.forms[0].command.value = "Appendix " + a;
+  console.log(document.forms[0].command.value);
+  document.forms[0].submit();
+}
+
+// Jump straight to an hour of the Office for the Dead.
+function defunctorum(hour) {
+  clearradio();
+
+  document.forms[0].caller.value = 1;
+  document.forms[0].votive.value = "C9";
+  document.forms[0].command.value = "pray" + hour;
+  document.forms[0].action = "officium.pl";
+  document.forms[0].target = "_self"
+  document.forms[0].submit();
+}
+
+//calls compare
+function callcompare() {
+  document.forms[0].action = "Cofficium.pl";
+  document.forms[0].target = "_self"
+  document.forms[0].submit();
+}
+//to prevent inhearitance of popup
+function clearradio() {
+  var a= document.forms[0].popup;
+  if (a) a.value = 0;
+  document.forms[0].action = "officium.pl";
+  document.forms[0].target = "_self"
+  return;
+}
+
+// set a popup tab
+function linkit(name,ind,lang) {
+  document.forms[0].popup.value = name;
+  document.forms[0].popuplang.value=lang;
+  document.forms[0].expandnum.value=ind;
+  if (ind == 0) {
+     document.forms[0].action = 'popup.pl';
+     document.forms[0].target = '_BLANK';
+  } else {
+     var c = document.forms[0].command.value;
+     if (!c.match('pray')) document.forms[0].command.value = "pray" + c;
+  }
+  document.forms[0].submit();
+}
+
+//finishing horas back to main page
+function okbutton() {
+  document.forms[0].action = "officium.pl";
+  document.forms[0].target = "_self"
+  document.forms[0].command.value = '';
+  document.forms[0].submit();
+}
+
+//restart the programlet if parameter change
+function parchange() {
+  var c = document.forms[0].command.value;
+  if (c && !c.match("change")) {
+     clearradio();
+  }
+  if (c && !c.match("pray")) document.forms[0].command.value = "pray" + c;
+  document.forms[0].submit();
+}
+
+//calls kalendar
+function callkalendar(mode) {
+  document.forms[0].action = 'kalendar.pl';
+  if (mode == 'kalendar') {
+    document.forms[0].kmonth.value = 15;
+  }
+  document.forms[0].target = "_self"
+  document.forms[0].submit();
+}
+
+// for Cofficium
+function callbrevi(date) {
+  document.forms[0].date.value = date;
+  document.forms[0].action = 'officium.pl'
+  document.forms[0].target = "_self"
+  document.forms[0].submit();
+}
+
+//calls missa
+function callmissa() {
+  document.forms[0].action = "../missa/missa.pl";
+  if (document.forms[0].command.value != "") {
+    document.forms[0].command.value = "praySanctaMissa"
+  }
+  document.forms[0].target = "_self"
+  document.forms[0].submit();
+}
+
+function prevnext(ch) {
+  var dat = document.forms[0].date.value;
+  var adat = dat.split('-');
+  var mtab = new Array(31,28,31,30,31,30,31,31,30,31,30,31);
+  var m = eval(adat[0]);
+  var d = eval(adat[1]);
+  var y = eval(adat[2]);
+  var c = eval(ch);
+
+  var leapyear = 0;
+  if ((y % 4) == 0) leapyear = 1;
+  if ((y % 100) == 0) leapyear = 0;
+  if ((y % 400) == 0) leapyear = 1;
+  if (leapyear) mtab[1] = 29;
+  d = d + c;
+  if (d < 1) {
+    m--;
+	if (m < 1) {y--; m = 12;}
+	d = mtab[m-1];
+  }
+  if (d > mtab[m-1]) {
+    m++;
+	  d = 1;
+	  if (m > 12) {y++; m = 1;}
+  }
+  document.forms[0].date.value = m + "-" + d + "-" + y;
+}
+</SCRIPT>
+</HEAD>
+<BODY  onload="startup()";>
+<FORM ACTION="officium.pl" METHOD="post" TARGET="_self">
+<P ALIGN=CENTER><FONT COLOR="blue">S. Nominis Beatæ Mariæ Virginis ~ III. classis</FONT><br/>
+<I><SPAN STYLE="font-size:82%;"><SPAN STYLE="color:maroon;">Tempora:</SPAN> <FONT COLOR="green">Feria Sexta infra Hebdomadam XIII post Octavam Pentecostes I. Septembris</FONT></SPAN></I>
+</P>
+<H1><FONT COLOR='MAROON' SIZE='+1'><B><I>Divinum Officium</I></B></FONT>&nbsp;<FONT COLOR='RED' SIZE='+1'>Rubrics 1960 - 1960</FONT></H1>
+<P ALIGN=CENTER><A HREF="#" onclick="callcompare()">Compare</A>
+&ensp;
+<A HREF="#" onclick="callmissa();">Sancta Missa</A>
+&ensp;
+<LABEL FOR="date" CLASS="offscreen">Date</LABEL>
+<INPUT TYPE="TEXT" ID="date" NAME="date" VALUE="" SIZE="10">
+<A HREF="#" onclick="prevnext(-1)">&darr;</A>
+<INPUT TYPE="submit" NAME="SUBMIT" VALUE=" " onclick="parchange();">
+<A HREF="#" onclick="prevnext(1)">&uarr;</A>
+&ensp;
+<A HREF="#" onclick="callkalendar();">Ordo</A>
+&ensp;
+<A HREF="#" onclick="pset('parameters')">Options</A>
+</P>
+<P ALIGN=CENTER><TABLE BORDER="0" HEIGHT="512"><TR>
+<TD ALIGN="CENTER"><FONT COLOR="MAROON">Ordinarium</FONT></TD>
+<TD ALIGN="CENTER"><FONT COLOR="MAROON">Psalterium</FONT></TD>
+<TD ALIGN="CENTER"><FONT COLOR="MAROON">Proprium de Tempore</FONT></TD>
+</TR><TR><TD ALIGN="CENTER" ROWSPAN="2">
+<IMG SRC="../../www/horas/breviarium.jpg" HEIGHT="512" ALT=""></TD>
+<TD HEIGHT="50%" VALIGN="MIDDLE" ALIGN="CENTER">
+<IMG SRC="../../www/horas/psalterium.jpg" HEIGHT="256" ALT=""></TD>
+<TD HEIGHT="50%" VALIGN="MIDDLE" ALIGN="CENTER">
+<IMG SRC="../../www/horas/tempore.jpg" HEIGHT=256 ALT=""></TD>
+</TR><TR>
+<TD HEIGHT="50%" VALIGN="MIDDLE" ALIGN="CENTER">
+<IMG SRC="../../www/horas/commune.jpg" HEIGHT="256" ALT=""></TD>
+<TD HEIGHT="50%" VALIGN="MIDDLE" ALIGN="CENTER">
+<IMG SRC="../../www/horas/sancti.jpg" HEIGHT="256" ALT=""></TD>
+</TR><TR>
+<TD ALIGN="CENTER"><FONT COLOR="RED"></FONT></TD>
+<TD ALIGN="CENTER"><FONT COLOR="MAROON">Commune Sanctorum</FONT></TD>
+<TD ALIGN="CENTER"><FONT COLOR="MAROON">Proprium Sanctorum</FONT></TD>
+</TR></TABLE>
+<br/>
+</P>
+<P ALIGN=CENTER><I>
+<A HREF=# onclick="hset('Matutinum');">Matutinum</A>
+&nbsp;&nbsp;
+<A HREF=# onclick="hset('Laudes');">Laudes</A>
+&nbsp;&nbsp;
+<A HREF=# onclick="hset('Prima');">Prima</A>
+&nbsp;&nbsp;
+<A HREF=# onclick="hset('Tertia');">Tertia</A>
+&nbsp;&nbsp;
+<A HREF=# onclick="hset('Sexta');">Sexta</A>
+&nbsp;&nbsp;
+<A HREF=# onclick="hset('Nona');">Nona</A>
+&nbsp;&nbsp;
+<A HREF=# onclick="hset('Vesperae');">Vesperae</A>
+&nbsp;&nbsp;
+<A HREF=# onclick="hset('Completorium');">Completorium</A>
+<br/>
+<A HREF=# onclick="hset('Omnes');">Omnes</A>
+&nbsp;&nbsp;
+<A HREF=# onclick="hset('Plures');">Plures</A>
+&nbsp;&nbsp;
+<A HREF="#" onclick="appendix('Index')"><FONT COLOR=>Appendix</FONT></A>
+&nbsp;&nbsp;
+<A HREF="#" onclick="callkalendar('kalendar')"><FONT COLOR=>Kalendarium</FONT></A>
+</I></P>
+<P ALIGN=CENTER><LABEL FOR='expand' CLASS='offscreen'>Expand</LABEL>
+<SELECT ID=expand NAME=expand SIZE=1 onchange="parchange();">
+<OPTION SELECTED VALUE="tota">tota
+<OPTION  VALUE="psalteria">psalteria
+<OPTION  VALUE="propria">propria
+<OPTION  VALUE="lineamenta">lineamenta
+</SELECT>
+&ensp;<LABEL FOR='version' CLASS='offscreen'>Version</LABEL>
+<SELECT ID=version NAME=version SIZE=1 onchange="parchange();">
+<OPTION  VALUE="Tridentine - 1570">Tridentine - 1570
+<OPTION  VALUE="Tridentine - 1888">Tridentine - 1888
+<OPTION  VALUE="Tridentine - 1906">Tridentine - 1906
+<OPTION  VALUE="Divino Afflatu - 1939">Divino Afflatu - 1939
+<OPTION  VALUE="Divino Afflatu - 1954">Divino Afflatu - 1954
+<OPTION  VALUE="Reduced - 1955">Reduced - 1955
+<OPTION SELECTED VALUE="Rubrics 1960 - 1960">Rubrics 1960 - 1960
+<OPTION  VALUE="Rubrics 1960 - 2020 USA">Rubrics 1960 - 2020 USA
+<OPTION  VALUE="Monastic Tridentinum 1617">Monastic - 1617
+<OPTION  VALUE="Monastic Divino 1930">Monastic - 1930
+<OPTION  VALUE="Monastic - 1963">Monastic - 1963
+<OPTION  VALUE="Monastic Tridentinum Cisterciensis 1951">Ordo Cisterciensis - 1951
+<OPTION  VALUE="Monastic Tridentinum Cisterciensis Altovadensis">Ordo Cisterciensis - Abbatia B.M.V. de Altovado
+<OPTION  VALUE="Ordo Praedicatorum - 1962">Ordo Praedicatorum - 1962
+</SELECT>
+&ensp;<LABEL FOR='lang2' CLASS='offscreen'>Language 2</LABEL>
+<SELECT ID=lang2 NAME=lang2 SIZE=1 onchange="parchange();">
+<OPTION  VALUE="Latin">Latin
+<OPTION SELECTED VALUE="English">English
+<OPTION  VALUE="Bohemice">Čeština
+<OPTION  VALUE="Cesky-Schaller">Čeština - Schaller
+<OPTION  VALUE="Dansk">Dansk
+<OPTION  VALUE="Deutsch">Deutsch
+<OPTION  VALUE="Espanol">Español
+<OPTION  VALUE="Francais">Français
+<OPTION  VALUE="Italiano">Italiano
+<OPTION  VALUE="Magyar">Magyar
+<OPTION  VALUE="Nederlands">Nederlands
+<OPTION  VALUE="Polski">Polski
+<OPTION  VALUE="Portugues">Português
+<OPTION  VALUE="Latin-Bea">Latin-Bea
+<OPTION  VALUE="Polski-Newer">Polski-Newer
+</SELECT>
+&ensp;<LABEL FOR='votive' CLASS='offscreen'>Votive</LABEL>
+<SELECT ID=votive NAME=votive SIZE=1 onchange="parchange();">
+<OPTION SELECTED VALUE="Hodie">Hodie
+<OPTION  VALUE="C1">Apostolorum
+<OPTION  VALUE="C1a">Evangelistarum
+<OPTION  VALUE="C2">Unius Martyris Pontificis
+<OPTION  VALUE="C2a">Unius Martyris non Pontificis
+<OPTION  VALUE="C3">Plurium Martyrum Pontificum
+<OPTION  VALUE="C3a">Plurium Martyrum non Pontificum
+<OPTION  VALUE="C4">Confessoris Pontificis
+<OPTION  VALUE="C4a">Doctoris Pontificis
+<OPTION  VALUE="C4c">Plurium Confessorum Pontificum
+<OPTION  VALUE="C5">Confessoris non Pontificis
+<OPTION  VALUE="C5a">Doctoris non Pontificis
+<OPTION  VALUE="C5b">Abbatis
+<OPTION  VALUE="C5c">Plurium Confessorum non Pontificum
+<OPTION  VALUE="C6">Unius Virginis Martyris
+<OPTION  VALUE="C6a">Unius Virginis tantum
+<OPTION  VALUE="C6b">Plurium Virginum Martyrum
+<OPTION  VALUE="C7">Unius non Virginis Martyris
+<OPTION  VALUE="C7a">Unius non Virginis nec Martyris
+<OPTION  VALUE="C7b">Plurium non Virginum Martyrum
+<OPTION  VALUE="C8">Dedicationis Ecclesiae
+<OPTION  VALUE="C9">Officium defunctorum
+<OPTION  VALUE="C10">Beata Maria in Sabbato
+<OPTION  VALUE="C11">Beatae Mariae Virginis
+<OPTION  VALUE="C12">Officium parvum Beatae Mariae Virginis
+</SELECT>
+</P>
+<P ALIGN=CENTER>
+<A HREF="../../www/horas/Help/versions.html" TARGET="_BLANK">Versions</A>
+&emsp;
+<A HREF="../../www/horas/Help/credits.html" TARGET="_BLANK">Credits</A>
+&emsp;
+<A HREF="../../www/horas/Help/download.html" TARGET="_BLANK">Download</A>
+&emsp;
+<A HREF="../../www/horas/Help/rubrics.html" TARGET="_BLANK">Rubrics</A>
+&emsp;
+<A HREF="../../www/horas/Help/technical.html" TARGET="_BLANK">Technical</A>
+&emsp;
+<A HREF="../../www/horas/Help/help.html" TARGET="_BLANK">Help</A>
+</P>
+<INPUT TYPE="HIDDEN" NAME="expandnum" VALUE="">
+<INPUT TYPE="HIDDEN" NAME="popup" VALUE="">
+<INPUT TYPE="HIDDEN" NAME="popuplang" VALUE="">
+<INPUT TYPE="HIDDEN" NAME="setup" VALUE="general;;;$expand='tota';;$version='Rubrics 1960';;$lang2='English';;$votive='Hodie';;;generalc;;;$expand='tota';;$version='Divino Afflatu';;$version2='Rubrics 1960 - 1960';;$langc='Latin';;$accented='plain';;;generalccheck;;;ooooo;;;generalcheck;;;oooo;;;parameters;;;$priest='0';;$building='0';;$lang1='Latin';;$psalmvar='0';;$whitebground='1';;$blackfont='';;$smallblack='-1';;$redfont=' italic red';;$initiale='+2 bold italic red';;$largefont='+1 bold italic red';;$smallfont='1 red';;$titlefont='+1 red';;$screenheight='1024';;$textwidth='100';;$oldhymns='0';;$nonumbers='0';;$nofancychars='0';;$noinnumbers='1';;$noflexa='1';;$langfb='English';;$testmode='Proper';;;parameterscheck;;;bbtbbbtcccccnnbbbbbtt;;;">
+<INPUT TYPE="HIDDEN" NAME="command" VALUE="">
+<INPUT TYPE="HIDDEN" NAME="date1" VALUE="">
+<INPUT TYPE="HIDDEN" NAME="searchvalue" VALUE="0">
+<INPUT TYPE="HIDDEN" NAME="officium" VALUE="officium.pl">
+<INPUT TYPE="HIDDEN" NAME="browsertime" VALUE="">
+<INPUT TYPE="HIDDEN" NAME="version" VALUE="Rubrics 1960 - 1960">
+<INPUT TYPE="HIDDEN" NAME="version2" VALUE="">
+<INPUT TYPE="HIDDEN" NAME="caller" VALUE='0'>
+<INPUT TYPE="HIDDEN" NAME="compare" VALUE=>
+<INPUT TYPE="HIDDEN" NAME="plures" VALUE="">
+<INPUT TYPE="HIDDEN" NAME="kmonth" VALUE="">
+</FORM>
+</BODY></HTML>
+<P ALIGN='CENTER'><FONT COLOR='red'>= Wrong date today using today =<br/></FONT></P>
+</FORM></BODY></HTML>

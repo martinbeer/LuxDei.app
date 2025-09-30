@@ -360,7 +360,9 @@ const HomeScreen = ({ slideAnim }) => {
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.primary }]}>Täglich</Text>
           
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: colors.cardBackground }]}>
+          <TouchableOpacity 
+            style={[styles.menuItem, { backgroundColor: colors.cardBackground }]}
+            onPress={() => navigation.navigate('Stundengebet')}>
             <Text style={[styles.menuItemText, { color: colors.primary }]}>Stundengebet</Text>
             <Ionicons name="chevron-forward" size={20} color={colors.primary} />
           </TouchableOpacity>

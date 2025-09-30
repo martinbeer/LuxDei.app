@@ -36,7 +36,11 @@ const GebetScreen = () => {
 
   const hasFavorites = favorites.size > 0;
   const effectiveCategories = useMemo(() => {
-    const baseCore = [{ id: 'all', name: 'Alle' }, { id: 'rosary', name: 'Rosenkranz' }];
+    const baseCore = [
+      { id: 'all', name: 'Alle' },
+      { id: 'hours', name: 'Stundengebet' },
+      { id: 'rosary', name: 'Rosenkranz' },
+    ];
     const dyn = categories || [];
     const base = hasFavorites
       ? [{ id: 'favorites', name: 'Favoriten' }, ...baseCore, ...dyn]
@@ -114,6 +118,8 @@ const GebetScreen = () => {
             const onPress = () => {
               if (c.id === 'rosary') {
                 navigation.navigate('Rosenkranz');
+              } else if (c.id === 'hours') {
+                navigation.navigate('Stundengebet');
               } else {
                 setCategory(c.id);
               }
