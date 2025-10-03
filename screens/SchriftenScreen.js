@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import BibelScreen from './BibelScreen';
-import VäterScreen from './VäterScreen';
+import VaeterScreen from './VaeterScreen';
 
 const { width, height } = Dimensions.get('window');
 const scale = width / 320; // Base width for scaling
@@ -21,7 +21,7 @@ const SchriftenScreen = ({ navigation }) => {
 
   const tabs = [
     { id: 0, name: 'Bibel', component: BibelScreen },
-    { id: 1, name: 'Kirchenväter', component: VäterScreen },
+    { id: 1, name: 'Kirchenväter', component: VaeterScreen },
     { id: 2, name: 'Konzile' },
     { id: 3, name: 'Lehrer' },
     { id: 4, name: 'Papst' },
@@ -47,9 +47,9 @@ const SchriftenScreen = ({ navigation }) => {
     
     if (activeTabData?.component) {
       const Component = activeTabData.component;
-      // Pass showHeader=false to VäterScreen to prevent double header
+      // Pass showHeader=false to VaeterScreen to prevent double header
       const props = { navigation };
-      if (Component === VäterScreen) {
+      if (Component === VaeterScreen) {
         props.showHeader = false;
       }
       return <Component {...props} />;

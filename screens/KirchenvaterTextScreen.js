@@ -1,200 +1,551 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  ScrollView, 
-  StyleSheet, 
-  TouchableOpacity, 
-  Dimensions,
+import React, { useEffect, useRef, useState } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
   ActivityIndicator,
-  Alert 
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../context/ThemeContext';
-import { supabase } from '../lib/supabase';
+  Dimensions,
+  PanResponder,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "../context/ThemeContext";
+import { supabase } from "../lib/supabase";
 
-const { width } = Dimensions.get('window');
+const { width } = Dimensions.get("window");
 const scale = width / 320;
+const normalize = (size) => Math.round(size * scale);
 
-const normalize = (size) => {
-  return Math.round(size * scale);
+const renderTextWithFootnotes = (textValue, anchors) => {
+  if (!anchors || !anchors.length) {
+    return textValue;
+  }
+
+  return (
+    <>
+      {textValue}
+      {anchors.map((anchor, idx) => (
+        <Text key={`fn-${anchor}-${idx}`} style={styles.footnoteSup}>
+          {anchor}
+        </Text>
+      ))}
+    </>
+  );
 };
 
 const KirchenvaterTextScreen = ({ route, navigation }) => {
   const { colors } = useTheme();
-  const { kirchenvater, authorId, workId, workTitle, chapter: initialChapter = 1 } = route.params;
+  const { kirchenvater, workId, workTitle } = route.params;
 
-  const [currentChapter, setCurrentChapter] = useState(initialChapter || 1);
-  const [verses, setVerses] = useState([]);
+  const [sections, setSections] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [blocks, setBlocks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [maxChapter, setMaxChapter] = useState(1);
+  const [sectionCache, setSectionCache] = useState(new Map());
+  const [maxSection, setMaxSection] = useState(1);
   
-  // Ref für ScrollView
+  // Swipe state
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [previewSection, setPreviewSection] = useState(0);
+  const [scrubX, setScrubX] = useState(0);
+  const [sectionInfoWidth, setSectionInfoWidth] = useState(0);
+  const latestRef = useRef({ maxSection: 1, width: 0, currentIndex: 0 });
+  const suppressNextPressRef = useRef(false);
+  const skipNextEffectRef = useRef(false);
+  const lastPreviewRef = useRef(0);
+
   const scrollViewRef = useRef(null);
-  const sectionRefs = useRef(new Map());
 
   useEffect(() => {
-    fetchChapterData();
-  }, [authorId, workId, currentChapter]);
+    loadSections();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workId]);
 
-  const fetchChapterData = async () => {
+  const loadSections = async () => {
     try {
       setLoading(true);
+      setSectionCache(new Map());
+      setBlocks([]);
 
-      // 1) Max Chapter ermitteln
-      if (maxChapter === 1) {
-        const { data: maxChapRow, error: maxErr } = await supabase
-          .from('chapters')
-          .select('chapter_number')
-          .eq('work_id', workId)
-          .order('chapter_number', { ascending: false })
-          .limit(1);
-        if (maxErr) {
-          console.error('Error fetching max chapter:', maxErr);
-        } else if (maxChapRow && maxChapRow.length > 0) {
-          setMaxChapter(maxChapRow[0].chapter_number);
-        }
+      const { data, error } = await supabase
+        .from("sections")
+        .select("id, title, label, order_index")
+        .eq("work_id", workId)
+        .order("order_index", { ascending: true });
+
+      if (error) {
+        throw error;
       }
 
-      // 2) Kapitel-ID anhand Nummer holen
-      const { data: chapterRow, error: chapErr } = await supabase
-        .from('chapters')
-        .select('id')
-        .eq('work_id', workId)
-        .eq('chapter_number', currentChapter)
-        .single();
+      const sectionIds = (data || []).map((section) => section.id);
+      let sectionsWithContent = new Set();
 
-      if (chapErr) {
-        console.error('Error fetching chapter id:', chapErr);
-        setVerses([]);
+      if (sectionIds.length) {
+        const { data: sectionPassages, error: passagesError } = await supabase
+          .from("passages")
+          .select("section_id")
+          .in("section_id", sectionIds)
+          .limit(10000);
+
+        if (passagesError) {
+          throw passagesError;
+        }
+
+        sectionsWithContent = new Set((sectionPassages || []).map((entry) => entry.section_id));
+      }
+
+      const normalized = (data || []).map((section, index) => ({
+        ...section,
+        displayTitle: section.title || section.label || `Abschnitt ${index + 1}`,
+        hasContent: sectionsWithContent.has(section.id),
+      }));
+
+      const sectionsToUse = normalized.filter((section) => section.hasContent);
+      const finalSections = sectionsToUse.length ? sectionsToUse : normalized;
+
+      setSections(finalSections);
+      setMaxSection(finalSections.length);
+
+      if (finalSections.length > 0) {
+        setCurrentIndex(0);
+        await loadSectionContent(finalSections[0], 0, { reset: true });
+      } else {
+        setBlocks([
+          {
+            key: "empty",
+            text: "F�r dieses Werk wurden noch keine Texte gespeichert.",
+            indentLevel: 0,
+            isHeading: false,
+          },
+        ]);
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error("Fehler beim Laden der Abschnitte:", err);
+      setBlocks([
+        {
+          key: "error",
+          text: "Die Abschnitte konnten nicht geladen werden.",
+          indentLevel: 0,
+          isHeading: false,
+        },
+      ]);
+      setLoading(false);
+    }
+  };
+
+  const loadSectionContent = async (section, index, { reset = false } = {}) => {
+    try {
+      if (!reset) {
+        setLoading(true);
+      }
+
+      const cacheKey = section.id;
+      if (sectionCache.has(cacheKey)) {
+        setBlocks(sectionCache.get(cacheKey));
         setLoading(false);
         return;
       }
 
-      // 3) Verse dieses Kapitels laden
-      const { data: versesData, error: versesErr } = await supabase
-        .from('verses')
-        .select('verse_number, text')
-        .eq('chapter_id', chapterRow.id)
-        .order('position', { ascending: true });
+      const { data: passagesData, error: passagesError } = await supabase
+        .from("passages")
+        .select("id, order_index, plain_text, verses(line_no, text, indent_level, is_heading)")
+        .eq("section_id", section.id)
+        .order("order_index", { ascending: true });
 
-      if (versesErr) {
-        console.error('Error fetching verses:', versesErr);
-        setVerses([]);
-      } else {
-        setVerses(versesData || []);
+      if (passagesError) {
+        throw passagesError;
       }
-    } catch (error) {
-      console.error('Error:', error);
-      Alert.alert('Fehler', `Daten konnten nicht geladen werden: ${error.message}`);
+
+      const passages = (passagesData || []).sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+      const passageIds = passages.map((p) => p.id).filter(Boolean);
+
+      let noteLinks = [];
+      if (passageIds.length) {
+        const { data: linksData, error: linksError } = await supabase
+          .from("note_links")
+          .select("note_id, origin_passage_id, origin_html_anchor")
+          .in("origin_passage_id", passageIds)
+          .order("origin_passage_id", { ascending: true });
+
+        if (linksError) {
+          throw linksError;
+        }
+
+        noteLinks = linksData || [];
+      }
+
+      const noteIds = Array.from(new Set(noteLinks.map((link) => link.note_id)));
+      let notesById = new Map();
+
+      if (noteIds.length) {
+        const { data: notesData, error: notesError } = await supabase
+          .from("notes")
+          .select("id, note_key, plain_text")
+          .in("id", noteIds);
+
+        if (notesError) {
+          throw notesError;
+        }
+
+        notesById = new Map((notesData || []).map((note) => [note.id, note]));
+      }
+
+      const anchorsByPassage = new Map();
+      noteLinks.forEach((link) => {
+        const anchorValue = (link.origin_html_anchor || "").trim();
+        if (!anchorValue) {
+          return;
+        }
+        const list = anchorsByPassage.get(link.origin_passage_id) || [];
+        list.push(anchorValue);
+        anchorsByPassage.set(link.origin_passage_id, list);
+      });
+
+      const consumeAnchors = (textValue, queue, isLastLine) => {
+        if (!queue || !queue.length) {
+          return { cleaned: textValue, used: [] };
+        }
+        let cleaned = textValue;
+        const used = [];
+        const patternsFor = (anchor) => [
+          new RegExp('\\s' + anchor + '(?=[\\s]*$)'),
+          new RegExp('\\s' + anchor + '(?=[.,;:!?)]*\\s*$)'),
+          new RegExp('\\(' + anchor + '\\)'),
+          new RegExp('\\[' + anchor + '\\]'),
+          new RegExp(anchor + '$'),
+        ];
+        while (queue.length) {
+          const anchor = queue[0];
+          let stripped = false;
+          for (const pattern of patternsFor(anchor)) {
+            if (pattern.test(cleaned)) {
+              cleaned = cleaned.replace(pattern, '');
+              stripped = true;
+              break;
+            }
+          }
+          if (!stripped) {
+            break;
+          }
+          used.push(anchor);
+          queue.shift();
+        }
+        if (!used.length && isLastLine && queue.length) {
+          used.push(...queue.splice(0));
+        }
+        return { cleaned: cleaned.trimEnd(), used };
+      };
+
+      const lines = [];
+      // Section title is already displayed in header - no need for duplicate heading
+
+      passages.forEach((passage, pIndex) => {
+        const verseLines = (passage.verses || []).sort((a, b) => (a.line_no || 0) - (b.line_no || 0));
+        const anchors = [...(anchorsByPassage.get(passage.id) || [])];
+
+        if (verseLines.length) {
+          verseLines.forEach((line, lineIdx) => {
+            const textValue = (line.text || "").trim();
+            if (!textValue) {
+              return;
+            }
+            const attachAnchors = lineIdx === verseLines.length - 1 ? anchors.splice(0, anchors.length) : [];
+            lines.push({
+              key: `${passage.id}-verse-${line.line_no}`,
+              text: textValue,
+              indentLevel: line.indent_level || 0,
+              isHeading: !!line.is_heading,
+              footnoteAnchors: attachAnchors,
+            });
+          });
+        } else if (passage.plain_text) {
+          const textValue = passage.plain_text.trim();
+          if (textValue) {
+            lines.push({
+              key: `${passage.id}-plain`,
+              text: textValue,
+              indentLevel: 0,
+              isHeading: false,
+              footnoteAnchors: anchors.splice(0, anchors.length),
+            });
+          }
+        }
+
+        if (pIndex < passages.length - 1) {
+          lines.push({ key: `${passage.id}-spacer`, isSpacer: true });
+        }
+      });
+
+      const orderedFootnotes = [];
+      const seenNotes = new Set();
+      noteLinks.forEach((link) => {
+        const note = notesById.get(link.note_id);
+        if (!note || seenNotes.has(note.id)) {
+          return;
+        }
+        seenNotes.add(note.id);
+        orderedFootnotes.push({
+          anchor: (link.origin_html_anchor || "").trim(),
+          key: note.note_key,
+          text: note.plain_text,
+        });
+      });
+
+      if (orderedFootnotes.length) {
+        lines.push({
+          key: `notes-divider-${section.id}`,
+          isDivider: true,
+        });
+        orderedFootnotes.forEach((note, idx) => {
+          const anchorLabel = note.anchor ? `${note.anchor}.` : `${note.key}.`;
+          const textValue = note.text ? note.text.trim() : "";
+          const content = [anchorLabel, textValue].filter(Boolean).join(" ");
+          if (content) {
+            lines.push({
+              key: `note-${section.id}-${idx}`,
+              text: content,
+              indentLevel: 0,
+              isHeading: false,
+              isFootnote: true,
+            });
+          }
+        });
+      }
+
+      const hasRenderableContent = lines.some((line) => {
+        if (!line || line.isSpacer || line.isHeading || line.isDivider) {
+          return false;
+        }
+        return typeof line.text === "string" && line.text.trim().length > 0;
+      });
+
+      if (!hasRenderableContent) {
+        const updatedSections = sections.filter((item) => item.id !== section.id);
+        setSections(updatedSections);
+        setMaxSection(updatedSections.length);
+        setSectionCache((prev) => new Map(prev).set(cacheKey, []));
+        if (updatedSections.length === 0) {
+          setBlocks([
+            {
+              key: "empty",
+              text: "F�r dieses Werk wurden noch keine Texte gespeichert.",
+              indentLevel: 0,
+              isHeading: false,
+            },
+          ]);
+          setCurrentIndex(0);
+          setLoading(false);
+        } else {
+          const nextIndex = Math.min(index, updatedSections.length - 1);
+          setCurrentIndex(nextIndex);
+          await loadSectionContent(updatedSections[nextIndex], nextIndex, { reset: true });
+        }
+        return;
+      }
+
+      setSectionCache((prev) => new Map(prev).set(cacheKey, lines));
+      setBlocks(lines);
+    } catch (err) {
+      console.error("Fehler beim Laden des Abschnitts:", err);
+      setBlocks([
+        {
+          key: "section-error",
+          text: "Der Abschnitt konnte nicht geladen werden.",
+          indentLevel: 0,
+          isHeading: false,
+        },
+      ]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePreviousChapter = () => {
-    if (currentChapter > 1) {
-      setCurrentChapter((c) => c - 1);
+  const handleSelectSection = async (index) => {
+    if (index < 0 || index >= sections.length) {
+      return;
+    }
+    setCurrentIndex(index);
+    await loadSectionContent(sections[index], index);
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: 0, animated: false });
     }
   };
 
-  const handleNextChapter = () => {
-    if (currentChapter < maxChapter) {
-      setCurrentChapter((c) => c + 1);
+  // Section navigation with swipe support
+  const commitSectionChange = (targetIndex) => {
+    if (targetIndex >= 0 && targetIndex < sections.length && targetIndex !== currentIndex) {
+      skipNextEffectRef.current = true;
+      handleSelectSection(targetIndex);
+    }
+  };
+
+  // Update latest ref when values change
+  useEffect(() => {
+    latestRef.current = { maxSection: sections.length, width: sectionInfoWidth, currentIndex };
+  }, [sections.length, sectionInfoWidth, currentIndex]);
+
+  // PanResponder for swipe navigation
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: (evt, gestureState) => {
+      return Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+    },
+    onMoveShouldSetPanResponder: (evt, gestureState) => {
+      return Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 10;
+    },
+    onPanResponderGrant: (evt, gestureState) => {
+      setIsScrubbing(true);
+      suppressNextPressRef.current = true;
+      const touchX = evt.nativeEvent.locationX;
+      setScrubX(touchX);
+      setPreviewSection(latestRef.current.currentIndex);
+      lastPreviewRef.current = latestRef.current.currentIndex;
+    },
+    onPanResponderMove: (evt, gestureState) => {
+      const touchX = Math.max(0, Math.min(latestRef.current.width, evt.nativeEvent.locationX));
+      setScrubX(touchX);
+      
+      if (latestRef.current.width > 0 && latestRef.current.maxSection > 1) {
+        const progress = touchX / latestRef.current.width;
+        const targetIndex = Math.round(progress * (latestRef.current.maxSection - 1));
+        const clampedIndex = Math.max(0, Math.min(latestRef.current.maxSection - 1, targetIndex));
+        
+        if (clampedIndex !== lastPreviewRef.current) {
+          setPreviewSection(clampedIndex);
+          lastPreviewRef.current = clampedIndex;
+        }
+      }
+    },
+    onPanResponderRelease: (evt, gestureState) => {
+      setIsScrubbing(false);
+      
+      if (latestRef.current.width > 0 && latestRef.current.maxSection > 1) {
+        const touchX = Math.max(0, Math.min(latestRef.current.width, evt.nativeEvent.locationX));
+        const progress = touchX / latestRef.current.width;
+        const targetIndex = Math.round(progress * (latestRef.current.maxSection - 1));
+        const clampedIndex = Math.max(0, Math.min(latestRef.current.maxSection - 1, targetIndex));
+        
+        commitSectionChange(clampedIndex);
+      }
+      
+      setTimeout(() => {
+        suppressNextPressRef.current = false;
+      }, 100);
+    }
+  });
+
+  const handlePrevious = () => {
+    if (suppressNextPressRef.current) return;
+    if (currentIndex > 0) {
+      handleSelectSection(currentIndex - 1);
+    }
+  };
+
+  const handleNext = () => {
+    if (suppressNextPressRef.current) return;
+    if (currentIndex < sections.length - 1) {
+      handleSelectSection(currentIndex + 1);
     }
   };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <SafeAreaView style={styles.safeArea}>
-        {/* Header */}
+      <SafeAreaView edges={['top']} style={{ backgroundColor: colors.primary }}>
         <View style={[styles.header, { backgroundColor: colors.primary }]}>
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => navigation.goBack()}
-            style={styles.backButton}
+            style={[styles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
           >
-            <Ionicons name="arrow-back" size={24} color={colors.white} />
+            <Ionicons name="arrow-back" size={22} color={colors.white} />
           </TouchableOpacity>
-          
-      <View style={styles.headerTitle}>
-            <Text style={[styles.authorTitle, { color: colors.white }]}>
+          <View style={styles.headerTexts}>
+            <Text style={[styles.headerAuthor, { color: colors.white }]} numberOfLines={1}>
               {kirchenvater}
             </Text>
-            <Text style={[styles.workTitle, { color: colors.white }]}>
-        {workTitle} - Kapitel {currentChapter}
+            <Text style={[styles.headerTitle, { color: colors.white }]} numberOfLines={1}>
+              {workTitle}
             </Text>
           </View>
-          
           <View style={styles.headerRight} />
         </View>
+      </SafeAreaView>
 
-        {/* Section Navigation */}
-        <View style={[styles.sectionNav, { backgroundColor: colors.cardBackground }]}>
+      {sections.length > 0 && (
+        <View style={[styles.chapterNav, { backgroundColor: colors.cardBackground }]}>
           <TouchableOpacity
-            onPress={handlePreviousChapter}
-            disabled={currentChapter === 1}
-            style={[
-              styles.navButton,
-              { backgroundColor: currentChapter === 1 ? colors.background : colors.primary }
-            ]}
+            onPress={handlePrevious}
+            disabled={currentIndex === 0}
+            style={[styles.navButton, { backgroundColor: currentIndex === 0 ? colors.background : colors.primary }]}
           >
-            <Ionicons 
-              name="chevron-back" 
-              size={20} 
-              color={currentChapter === 1 ? colors.textSecondary : colors.white} 
-            />
+            <Ionicons name="chevron-back" size={20} color={currentIndex === 0 ? colors.textSecondary : colors.white} />
           </TouchableOpacity>
 
-          <View style={styles.sectionInfo}>
-            <Text style={[styles.sectionNavText, { color: colors.primary }]}>
-              Kapitel {currentChapter} von {maxChapter}
-            </Text>
+          <View style={styles.chapterInfo} collapsable={false} onLayout={(e) => setSectionInfoWidth(e.nativeEvent.layout.width)} {...panResponder.panHandlers}>
+            <Text style={[styles.chapterNavText, { color: colors.primary }]}>Abschnitt {isScrubbing ? (previewSection + 1) : (currentIndex + 1)} von {sections.length}</Text>
+            {isScrubbing && sectionInfoWidth > 0 && (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.scrubBubble,
+                  { backgroundColor: colors.primary, left: Math.max(10, Math.min(scrubX - 20, sectionInfoWidth - 40)) },
+                ]}
+              >
+                <Text style={[styles.scrubBubbleText, { color: colors.white }]}>{previewSection + 1}</Text>
+              </View>
+            )}
           </View>
 
           <TouchableOpacity
-            onPress={handleNextChapter}
-            disabled={currentChapter === maxChapter}
-            style={[
-              styles.navButton,
-              { backgroundColor: currentChapter === maxChapter ? colors.background : colors.primary }
-            ]}
+            onPress={handleNext}
+            disabled={currentIndex >= sections.length - 1}
+            style={[styles.navButton, { backgroundColor: currentIndex >= sections.length - 1 ? colors.background : colors.primary }]}
           >
-            <Ionicons 
-              name="chevron-forward" 
-              size={20} 
-              color={currentChapter === maxChapter ? colors.textSecondary : colors.white} 
-            />
+            <Ionicons name="chevron-forward" size={20} color={currentIndex >= sections.length - 1 ? colors.textSecondary : colors.white} />
           </TouchableOpacity>
         </View>
+      )}
 
-        {/* Content */}
+      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeAreaContent}>
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-              Abschnitt wird geladen...
-            </Text>
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Text wird geladen...</Text>
           </View>
         ) : (
-          <ScrollView 
+          <ScrollView
             ref={scrollViewRef}
             style={styles.scrollView}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
           >
-            {verses.length > 0 ? (
-              verses.map((v) => (
-                <View key={`v-${v.verse_number}`} style={[styles.sectionContainer, { backgroundColor: colors.cardBackground }]}>
-                  <Text style={[styles.sectionText, { color: colors.text }]}>[{v.verse_number}] {v.text}</Text>
-                </View>
-              ))
+            {blocks.length > 0 ? (
+              blocks.map((block) =>
+                block.isSpacer ? (
+                  <View key={block.key} style={styles.spacer} />
+                ) : block.isDivider ? (
+                  <View key={block.key} style={[styles.divider, { backgroundColor: colors.textSecondary }]} />
+                ) : (
+                  <View key={block.key} style={styles.textBlock}>
+                    <Text
+                      style={[
+                        styles.blockText,
+                        { color: colors.text },
+                        block.isHeading && styles.headingText,
+                        block.isFootnote && styles.footnoteText,
+                        block.indentLevel ? { marginLeft: block.indentLevel * 12 } : null,
+                      ]}
+                    >
+                      {renderTextWithFootnotes(block.text, block.footnoteAnchors)}
+                    </Text>
+                  </View>
+                )
+              )
             ) : (
               <View style={styles.noDataContainer}>
-                <Ionicons name="document-text-outline" size={60} color={colors.cardBackground} />
-                <Text style={[styles.noDataText, { color: colors.textSecondary }]}>
-                  Kein Text für dieses Kapitel gefunden
-                </Text>
+                <Ionicons name="book-outline" size={60} color={colors.cardBackground} />
+                <Text style={[styles.noDataText, { color: colors.textSecondary }]}>Kein Text f�r diesen Abschnitt gefunden</Text>
               </View>
             )}
           </ScrollView>
@@ -205,19 +556,13 @@ const KirchenvaterTextScreen = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  safeAreaContent: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 15,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
   },
   backButton: {
     width: 40,
@@ -226,26 +571,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
+  headerTexts: {
     flex: 1,
-    alignItems: 'center',
+    marginHorizontal: 12,
   },
-  authorTitle: {
+  headerAuthor: {
     fontSize: normalize(18),
     fontFamily: 'Montserrat_600SemiBold',
-    fontWeight: '600',
-    textAlign: 'center',
   },
-  workTitle: {
+  headerTitle: {
     fontSize: normalize(14),
     fontFamily: 'Montserrat_400Regular',
     opacity: 0.9,
-    textAlign: 'center',
   },
-  headerRight: {
-    width: 40,
-  },
-  sectionNav: {
+  headerRight: { width: 40 },
+  chapterNav: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -255,44 +595,41 @@ const styles = StyleSheet.create({
     marginTop: 15,
     borderRadius: 15,
   },
-  navButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sectionInfo: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  sectionNavText: {
+  navButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  chapterInfo: { flex: 1, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  chapterNavText: { fontSize: normalize(16), fontFamily: 'Montserrat_500Medium', fontWeight: '500' },
+  scrollView: { flex: 1 },
+  scrollContent: { paddingHorizontal: 24, paddingVertical: 20, paddingBottom: 80 },
+  textBlock: { marginBottom: 16 },
+  blockText: {
     fontSize: normalize(16),
-    fontFamily: 'Montserrat_500Medium',
-    fontWeight: '500',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    paddingBottom: 100,
-  },
-  sectionContainer: {
-    marginBottom: 20,
-    padding: 20,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  sectionText: {
-    fontSize: normalize(16),
-    fontFamily: 'Montserrat_400Regular',
     lineHeight: normalize(24),
+    fontFamily: 'Montserrat_400Regular',
+  },
+  headingText: {
+    fontFamily: 'Montserrat_600SemiBold',
+    fontSize: normalize(18),
+    marginBottom: 6,
+  },
+  footnoteSup: {
+    fontSize: normalize(12),
+    lineHeight: normalize(12),
+    marginLeft: 2,
+    transform: [{ translateY: -8 }],
+    fontFamily: 'Montserrat_700Bold',
+  },
+  footnoteText: {
+    fontStyle: 'italic',
+    opacity: 0.85,
+    fontSize: normalize(14),
+  },
+  spacer: { height: 16 },
+  divider: {
+    height: 1,
+    borderRadius: 2,
+    marginVertical: 16,
+    opacity: 0.4,
+    alignSelf: 'stretch',
   },
   loadingContainer: {
     flex: 1,
@@ -318,6 +655,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
   },
+  scrubBubble: {
+    position: 'absolute',
+    bottom: 44,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  scrubBubbleText: { fontSize: normalize(12), fontFamily: 'Montserrat_700Bold', fontWeight: '700' },
 });
 
 export default KirchenvaterTextScreen;

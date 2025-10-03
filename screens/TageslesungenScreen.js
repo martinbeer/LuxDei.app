@@ -280,7 +280,7 @@ const TageslesungenScreen = () => {
                 '1Joh','2Joh','3Joh','Jud','Offb'
               ]);
               const newTestamentFullNames = new Set([
-                'Matthäusevangelium','Markusevangelium','Lukasevangelium','Johannesevangelium','Apostelgeschichte',
+                'Matthäusevangelium','Matthaeusevangelium','Markusevangelium','Lukasevangelium','Johannesevangelium','Apostelgeschichte',
                 'Römerbrief','1. Korintherbrief','2. Korintherbrief','Galaterbrief','Epheserbrief','Philipperbrief',
                 'Kolosserbrief','1. Thessalonicherbrief','2. Thessalonicherbrief','1. Timotheusbrief','2. Timotheusbrief',
                 'Titusbrief','Philemonbrief','Hebräerbrief','Jakobusbrief','1. Petrusbrief','2. Petrusbrief',
@@ -516,6 +516,11 @@ const TageslesungenScreen = () => {
   );
 };
 
+// Helper function for Gospel-specific fixes
+const isGospelReading = (reading, databaseBookName) => {
+  return reading.type === 'gospel' && ['Mt', 'Mk', 'Lk', 'Joh', 'Matthaeusevangelium', 'Markusevangelium', 'Lukasevangelium', 'Johannesevangelium'].includes(databaseBookName);
+};
+
 // Component to display reading content with verses
 const ReadingContent = ({ reading, selectedTranslation, colors }) => {
   const [verses, setVerses] = useState([]);
@@ -692,16 +697,19 @@ const ReadingContent = ({ reading, selectedTranslation, colors }) => {
     
     let allVerses = [];
     
-    for (const ref of references) {
+        for (const ref of references) {
       const databaseBookName = getDatabaseBookName(ref.book, tableName);
+      console.log('=== GOSPEL DEBUG START ===');
+      console.log('Reference:', ref);
+      console.log('Translation:', selectedTranslation, 'Table:', tableName);
       console.log('Book mapping:', ref.book, '->', databaseBookName);
+      console.log('Reading type:', reading.type);
       
       if (!databaseBookName) {
-        console.warn('No database book name found for:', ref.book);
+        console.warn('❌ No database book name found for:', ref.book);
+        console.log('=== GOSPEL DEBUG END (NO DB NAME) ===');
         continue;
-      }
-      
-      try {
+      }      try {
         // Parse verse range - handle complex cases like "1-3a.3b-4.5.6"
         const verseRanges = ref.verses.split('.');
         let refVerses = [];
@@ -760,7 +768,7 @@ const ReadingContent = ({ reading, selectedTranslation, colors }) => {
                 '1Joh','2Joh','3Joh','Jud','Offb'
               ]);
               const newTestamentFullNames = new Set([
-                'Matthäusevangelium','Markusevangelium','Lukasevangelium','Johannesevangelium','Apostelgeschichte',
+                'Matthäusevangelium','Matthaeusevangelium','Markusevangelium','Lukasevangelium','Johannesevangelium','Apostelgeschichte',
                 'Römerbrief','1. Korintherbrief','2. Korintherbrief','Galaterbrief','Epheserbrief','Philipperbrief',
                 'Kolosserbrief','1. Thessalonicherbrief','2. Thessalonicherbrief','1. Timotheusbrief','2. Timotheusbrief',
                 'Titusbrief','Philemonbrief','Hebräerbrief','Jakobusbrief','1. Petrusbrief','2. Petrusbrief',

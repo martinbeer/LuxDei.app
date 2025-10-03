@@ -21,7 +21,7 @@ import BibelContentScreen from './screens/BibelContentScreen';
 import TageslesungenScreen from './screens/TageslesungenScreen';
 import StundengebetScreen from './screens/StundengebetScreen';
 import HourDetailScreen from './screens/HourDetailScreen';
-import VäterScreen from './screens/VäterScreen';
+import VaeterScreen from './screens/VaeterScreen';
 import KirchenvaterDetailScreen from './screens/KirchenvaterDetailScreen';
 import KirchenvaterTextScreen from './screens/KirchenvaterTextScreen';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
@@ -53,7 +53,7 @@ function SchriftenStackNavigator() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="SchriftenMain" component={SchriftenScreen} />
       <Stack.Screen name="BibelContent" component={BibelContentScreen} />
-      <Stack.Screen name="Väter" component={VäterScreen} />
+      <Stack.Screen name="Väter" component={VaeterScreen} />
       <Stack.Screen name="KirchenvaterDetail" component={KirchenvaterDetailScreen} />
       <Stack.Screen name="KirchenvaterText" component={KirchenvaterTextScreen} />
     </Stack.Navigator>

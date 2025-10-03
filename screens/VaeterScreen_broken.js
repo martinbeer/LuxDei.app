@@ -24,6 +24,20 @@ const normalize = (size) => {
   return Math.round(newSize);
 };
 
+const parseYears = (lifespan) => {
+  if (!lifespan) return { birth: null, death: null };
+  const match = lifespan.match(/(?:(\d{1,4}))[\s–\-]+(\d{1,4})/);
+  if (match) {
+    const birth = parseInt(match[1], 10);
+    const death = parseInt(match[2], 10);
+    return {
+      birth: Number.isNaN(birth) ? null : birth,
+      death: Number.isNaN(death) ? null : death,
+    };
+  }
+  return { birth: null, death: null };
+};
+
 // Scrolling Text Component für lange Namen (Marquee-Effekt)
 const ScrollingText = ({ text, style, maxWidth }) => {
   const { colors } = useTheme();
@@ -127,7 +141,7 @@ const ScrollingText = ({ text, style, maxWidth }) => {
   );
 };
 
-const VäterScreen = ({ navigation, showHeader = true }) => {
+const VaeterScreen = ({ navigation, showHeader = true }) => {
   const { colors } = useTheme();
   const [kirchenväterData, setKirchenväterData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
@@ -136,6 +150,13 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [sortType, setSortType] = useState('alphabet'); // 'alphabet', 'year-asc', 'year-desc', 'default'
   const [showSortDropdown, setShowSortDropdown] = useState(false);
+  
+  // Textsuche State
+  const [isTextSearchVisible, setIsTextSearchVisible] = useState(false);
+  const [textSearchQuery, setTextSearchQuery] = useState('');
+  const [textSearchResults, setTextSearchResults] = useState([]);
+  const [isTextSearching, setIsTextSearching] = useState(false);
+  const textSearchInputRef = useRef(null);
 
   // Fallback colors if theme context is not ready
   const safeColors = colors || {
@@ -152,29 +173,35 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
     const loadAuthors = async () => {
       try {
         setLoading(true);
-        console.log('🚀 Lade Autoren (Kirchenväter) aus Supabase...');
+        console.log('[Supabase] Lade Autoren (Kirchenvaeter) aus Supabase...');
 
         const { data, error } = await supabase
           .from('authors')
-          .select('id, name, name_detail, birth_year, death_year')
+          .select('id, name, name_original, lifespan, slug')
           .order('name', { ascending: true });
 
         if (error) throw error;
 
-        const authors = (data || []).map((a) => ({
-          id: a.id,
-          name: a.name,
-          description: a.name_detail || 'Kirchenvater',
-          birth_year: a.birth_year || null,
-          death_year: a.death_year || null,
-        }));
+        const authors = (data || []).map((a) => {
+          const years = parseYears(a.lifespan || '');
+          const descriptionParts = [];
+          if (a.name_original) descriptionParts.push(a.name_original);
+          if (a.lifespan) descriptionParts.push(a.lifespan);
+          return {
+            id: a.id,
+            name: a.name,
+            description: descriptionParts.join(' · ') || 'Kirchenvater',
+            birth_year: years.birth,
+            death_year: years.death,
+          };
+        });
 
         const sortedData = sortData(authors, sortType);
         setKirchenväterData(authors);
         setFilteredData(sortedData);
-        console.log(`✅ ${authors.length} Autoren geladen`);
+        console.log(`[Supabase] ${authors.length} Autoren geladen`);
       } catch (error) {
-        console.error('❌ Fehler beim Laden der Autoren:', error);
+        console.error('[Supabase] Fehler beim Laden der Autoren:', error);
         setKirchenväterData([]);
         setFilteredData([]);
       } finally {
@@ -201,6 +228,15 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
       setFilteredData(sortedData);
     }
   }, [sortType, kirchenväterData]);
+
+  // Textsuche-Effekt
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      performTextSearch(textSearchQuery);
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [textSearchQuery]);
 
   // Sortierfunktion
   const sortData = (data, type) => {
@@ -265,6 +301,168 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
       setSearchText('');
       setFilteredData(kirchenväterData);
     }
+  };
+
+  // Textsuche-Funktionen
+  const handleTextSearchPress = () => {
+    setIsTextSearchVisible(!isTextSearchVisible);
+    if (!isTextSearchVisible) {
+      setTimeout(() => {
+        textSearchInputRef.current?.focus();
+      }, 100);
+    } else {
+      setTextSearchQuery('');
+      setTextSearchResults([]);
+    }
+  };
+
+  const performTextSearch = async (query) => {
+    if (!query || query.length < 2) {
+      setTextSearchResults([]);
+      return;
+    }
+
+    setIsTextSearching(true);
+    try {
+      console.log('[Textsuche] Suche nach:', query);
+      
+      // Suche in verses Tabelle
+      const { data: versesData, error: versesError } = await supabase
+        .from('verses')
+        .select(`
+          id,
+          text,
+          line_no,
+          passages!inner(
+            id,
+            order_index,
+            sections!inner(
+              id,
+              title,
+              label,
+              order_index,
+              works!inner(
+                id,
+                title,
+                title_original,
+                authors!inner(
+                  id,
+                  name
+                )
+              )
+            )
+          )
+        `)
+        .ilike('text', `%${query}%`)
+        .limit(50);
+
+      if (versesError) {
+        console.error('[Textsuche] Fehler bei verses:', versesError);
+      }
+
+      // Suche in passages plain_text
+      const { data: passagesData, error: passagesError } = await supabase
+        .from('passages')
+        .select(`
+          id,
+          plain_text,
+          order_index,
+          sections!inner(
+            id,
+            title,
+            label,
+            order_index,
+            works!inner(
+              id,
+              title,
+              title_original,
+              authors!inner(
+                id,
+                name
+              )
+            )
+          )
+        `)
+        .ilike('plain_text', `%${query}%`)
+        .limit(50);
+
+      if (passagesError) {
+        console.error('[Textsuche] Fehler bei passages:', passagesError);
+      }
+
+      // Ergebnisse zusammenführen und formatieren
+      const results = [];
+      
+      // Verses Ergebnisse
+      (versesData || []).forEach(verse => {
+        const work = verse.passages?.sections?.works;
+        const author = work?.authors;
+        const section = verse.passages?.sections;
+        
+        if (work && author && section) {
+          results.push({
+            id: `verse-${verse.id}`,
+            type: 'verse',
+            text: verse.text,
+            author: author.name,
+            work: work.title || work.title_original,
+            section: section.title || section.label,
+            workId: work.id,
+            authorId: author.id,
+            sectionId: section.id,
+            sectionIndex: section.order_index || 0
+          });
+        }
+      });
+
+      // Passages Ergebnisse
+      (passagesData || []).forEach(passage => {
+        const work = passage.sections?.works;
+        const author = work?.authors;
+        const section = passage.sections;
+        
+        if (work && author && section) {
+          results.push({
+            id: `passage-${passage.id}`,
+            type: 'passage',
+            text: passage.plain_text,
+            author: author.name,
+            work: work.title || work.title_original,
+            section: section.title || section.label,
+            workId: work.id,
+            authorId: author.id,
+            sectionId: section.id,
+            sectionIndex: section.order_index || 0
+          });
+        }
+      });
+
+      // Sortiere nach Autor, dann Werk, dann Abschnitt
+      results.sort((a, b) => {
+        if (a.author !== b.author) return a.author.localeCompare(b.author);
+        if (a.work !== b.work) return a.work.localeCompare(b.work);
+        return (a.sectionIndex || 0) - (b.sectionIndex || 0);
+      });
+
+      setTextSearchResults(results);
+      console.log('[Textsuche] Gefunden:', results.length, 'Ergebnisse');
+      
+    } catch (error) {
+      console.error('[Textsuche] Fehler:', error);
+      setTextSearchResults([]);
+    } finally {
+      setIsTextSearching(false);
+    }
+  };
+
+  const handleTextSearchResultPress = (result) => {
+    // Navigiere zu dem spezifischen Abschnitt
+    navigation.navigate('KirchenvaterText', {
+      kirchenvater: result.author,
+      workId: result.workId,
+      workTitle: result.work,
+      initialSectionId: result.sectionId
+    });
   };
 
   const renderVater = React.useCallback(({ item, index }) => {
@@ -346,6 +544,17 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
             color={safeColors.primary} 
           />
         </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.textSearchButton, { backgroundColor: safeColors.cardBackground }]}
+          onPress={handleTextSearchPress}
+        >
+          <Ionicons 
+            name="document-text" 
+            size={20} 
+            color={safeColors.primary} 
+          />
+        </TouchableOpacity>
       </View>
 
       {/* Sort Dropdown - EXAKT wie BibelScreen */}
@@ -380,8 +589,35 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
           ))}
         </View>
       )}
+
+      {/* Text Search Input */}
+      {isTextSearchVisible && (
+        <View style={[styles.textSearchContainer, { backgroundColor: safeColors.cardBackground }]}>
+          <Ionicons name="search" size={20} color={safeColors.textSecondary} style={styles.searchIcon} />
+          <TextInput
+            ref={textSearchInputRef}
+            style={[styles.searchInput, { color: safeColors.text }]}
+            placeholder="Suche in Texten..."
+            placeholderTextColor={safeColors.textSecondary}
+            value={textSearchQuery}
+            onChangeText={setTextSearchQuery}
+            autoFocus
+          />
+          {textSearchQuery.length > 0 && (
+            <TouchableOpacity
+              style={styles.clearButton}
+              onPress={() => {
+                setTextSearchQuery('');
+                setTextSearchResults([]);
+              }}
+            >
+              <Ionicons name="close" size={20} color={safeColors.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
-  ), [isSearchVisible, searchText, showSortDropdown, sortType, safeColors, handleSearch, handleSortChange, toggleSearch]);
+  ), [isSearchVisible, searchText, showSortDropdown, sortType, safeColors, handleSearch, handleSortChange, toggleSearch, isTextSearchVisible, textSearchQuery, handleTextSearchPress]);
 
   return (
     <View style={[styles.container, { backgroundColor: safeColors.background }]}>
@@ -424,6 +660,61 @@ const VäterScreen = ({ navigation, showHeader = true }) => {
           disableVirtualization={false}
           onScrollBeginDrag={() => setShowSortDropdown(false)}
         />
+      )}
+
+      {/* Text Search Results - Full Screen Overlay */}
+      {isTextSearchVisible && (
+        <View style={[styles.searchResultsOverlay, { backgroundColor: safeColors.background }]}>
+          {isTextSearching ? (
+            <View style={styles.searchLoadingContainer}>
+              <Text style={[styles.searchLoadingText, { color: safeColors.textSecondary }]}>
+                Suche läuft...
+              </Text>
+            </View>
+          ) : textSearchResults.length > 0 ? (
+            <FlatList
+              data={textSearchResults}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.searchResultItem, { backgroundColor: safeColors.cardBackground }]}
+                  onPress={() => handleTextSearchResultPress(item)}
+                >
+                  <View style={styles.searchResultHeader}>
+                    <Text style={[styles.searchResultAuthor, { color: safeColors.primary }]}>
+                      {item.author}
+                    </Text>
+                    <Text style={[styles.searchResultWork, { color: safeColors.textSecondary }]}>
+                      {item.work}
+                    </Text>
+                  </View>
+                  <Text style={[styles.searchResultSection, { color: safeColors.textSecondary }]}>
+                    {item.section}
+                  </Text>
+                  <Text 
+                    style={[styles.searchResultText, { color: safeColors.text }]}
+                    numberOfLines={3}
+                  >
+                    {item.text}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              contentContainerStyle={styles.searchResultsContainer}
+            />
+          ) : textSearchQuery.length > 0 ? (
+            <View style={styles.noResultsContainer}>
+              <Text style={[styles.noResultsText, { color: safeColors.textSecondary }]}>
+                Keine Ergebnisse für "{textSearchQuery}"
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.searchPromptContainer}>
+              <Text style={[styles.searchPromptText, { color: safeColors.textSecondary }]}>
+                Geben Sie einen Suchbegriff ein...
+              </Text>
+            </View>
+          )}
+        </View>
       )}
     </View>
   );
@@ -612,10 +903,115 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 8,
+    paddingVertical: 12,
     paddingHorizontal: 15,
     borderRadius: 8,
-    marginVertical: 1,
+  },
+  sortOptionText: {
+    fontSize: normalize(14),
+    fontFamily: 'Montserrat_500Medium',
+  },
+  // Textsuche Styles
+  textSearchButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginTop: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  searchResultsOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+  },
+  searchResultsContainer: {
+    padding: 20,
+  },
+  searchResultItem: {
+    padding: 15,
+    marginBottom: 10,
+    borderRadius: 10,
+  },
+  searchResultHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 5,
+  },
+  searchResultAuthor: {
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: 'Montserrat_600SemiBold',
+    flex: 1,
+  },
+  searchResultWork: {
+    fontSize: 12,
+    fontFamily: 'Montserrat_400Regular',
+    textAlign: 'right',
+    flex: 1,
+  },
+  searchResultSection: {
+    fontSize: 12,
+    fontFamily: 'Montserrat_400Regular',
+    marginBottom: 8,
+  },
+  searchResultText: {
+    fontSize: 14,
+    fontFamily: 'Montserrat_400Regular',
+    lineHeight: 20,
+  },
+  searchLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchLoadingText: {
+    fontSize: 16,
+    fontFamily: 'Montserrat_400Regular',
+  },
+  noResultsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  noResultsText: {
+    fontSize: 16,
+    fontFamily: 'Montserrat_400Regular',
+    textAlign: 'center',
+  },
+  searchPromptContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  searchPromptText: {
+    fontSize: 16,
+    fontFamily: 'Montserrat_400Regular',
+    textAlign: 'center',
+  },
+});
+
+export default VaeterScreen;
+    fontSize: 16,
+    fontFamily: 'Montserrat_400Regular',
+    textAlign: 'center',
+  },
+});
+
+export default VaeterScreen;
   },
   sortOptionText: {
     fontSize: normalize(14),
@@ -624,4 +1020,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default VäterScreen;
+export default VaeterScreen;
