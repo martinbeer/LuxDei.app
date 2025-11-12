@@ -18,21 +18,35 @@ const { width } = Dimensions.get("window");
 const scale = width / 320;
 const normalize = (size) => Math.round(size * scale);
 
-const renderTextWithFootnotes = (textValue, anchors) => {
-  if (!anchors || !anchors.length) {
-    return textValue;
+const renderTextWithFootnotes = (textValue, footnoteNumberMap) => {
+  if (!textValue) {
+    return null;
   }
 
-  return (
-    <>
-      {textValue}
-      {anchors.map((anchor, idx) => (
-        <Text key={`fn-${anchor}-${idx}`} style={styles.footnoteSup}>
-          {anchor}
-        </Text>
-      ))}
-    </>
-  );
+  const parts = [];
+  const normalisePlaceholder = (value) => (value || '').replace(/^{?FN/i, '').replace(/}?$/, '').trim();
+  const regex = /\{FN([^}]+)\}/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(textValue)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(textValue.slice(lastIndex, match.index));
+    }
+    const key = (match[1] || '').trim() || '?';
+    parts.push(
+      <Text key={`fn-${key}-${match.index}`} style={styles.footnoteSup}>
+        {key}
+      </Text>
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < textValue.length) {
+    parts.push(textValue.slice(lastIndex));
+  }
+
+  return parts;
 };
 
 const KirchenvaterTextScreen = ({ route, navigation }) => {
@@ -193,72 +207,23 @@ const KirchenvaterTextScreen = ({ route, navigation }) => {
         notesById = new Map((notesData || []).map((note) => [note.id, note]));
       }
 
-      const anchorsByPassage = new Map();
-      noteLinks.forEach((link) => {
-        const anchorValue = (link.origin_html_anchor || "").trim();
-        if (!anchorValue) {
-          return;
-        }
-        const list = anchorsByPassage.get(link.origin_passage_id) || [];
-        list.push(anchorValue);
-        anchorsByPassage.set(link.origin_passage_id, list);
-      });
-
-      const consumeAnchors = (textValue, queue, isLastLine) => {
-        if (!queue || !queue.length) {
-          return { cleaned: textValue, used: [] };
-        }
-        let cleaned = textValue;
-        const used = [];
-        const patternsFor = (anchor) => [
-          new RegExp('\\s' + anchor + '(?=[\\s]*$)'),
-          new RegExp('\\s' + anchor + '(?=[.,;:!?)]*\\s*$)'),
-          new RegExp('\\(' + anchor + '\\)'),
-          new RegExp('\\[' + anchor + '\\]'),
-          new RegExp(anchor + '$'),
-        ];
-        while (queue.length) {
-          const anchor = queue[0];
-          let stripped = false;
-          for (const pattern of patternsFor(anchor)) {
-            if (pattern.test(cleaned)) {
-              cleaned = cleaned.replace(pattern, '');
-              stripped = true;
-              break;
-            }
-          }
-          if (!stripped) {
-            break;
-          }
-          used.push(anchor);
-          queue.shift();
-        }
-        if (!used.length && isLastLine && queue.length) {
-          used.push(...queue.splice(0));
-        }
-        return { cleaned: cleaned.trimEnd(), used };
-      };
-
       const lines = [];
       // Section title is already displayed in header - no need for duplicate heading
 
       passages.forEach((passage, pIndex) => {
         const verseLines = (passage.verses || []).sort((a, b) => (a.line_no || 0) - (b.line_no || 0));
-        const anchors = [...(anchorsByPassage.get(passage.id) || [])];
 
         if (verseLines.length) {
-          verseLines.forEach((line, lineIdx) => {
-            const textValue = (line.text || "").trim();
+          verseLines.forEach((line) => {
+            const textValue = (line.text || '').trim();
             if (!textValue) {
               return;
             }
-            const attachAnchors = lineIdx === verseLines.length - 1 ? anchors.splice(0, anchors.length) : [];
             lines.push({
               key: `${passage.id}-verse-${line.line_no}`,
               text: textValue,
               indentLevel: line.indent_level || 0,
               isHeading: !!line.is_heading,
-              footnoteAnchors: attachAnchors,
             });
           });
         } else if (passage.plain_text) {
@@ -269,7 +234,6 @@ const KirchenvaterTextScreen = ({ route, navigation }) => {
               text: textValue,
               indentLevel: 0,
               isHeading: false,
-              footnoteAnchors: anchors.splice(0, anchors.length),
             });
           }
         }
@@ -288,7 +252,7 @@ const KirchenvaterTextScreen = ({ route, navigation }) => {
         }
         seenNotes.add(note.id);
         orderedFootnotes.push({
-          anchor: (link.origin_html_anchor || "").trim(),
+          anchor: (link.origin_html_anchor || '').replace(/^{?FN/i, '').replace(/}?$/, '').trim(),
           key: note.note_key,
           text: note.plain_text,
         });
@@ -300,9 +264,11 @@ const KirchenvaterTextScreen = ({ route, navigation }) => {
           isDivider: true,
         });
         orderedFootnotes.forEach((note, idx) => {
-          const anchorLabel = note.anchor ? `${note.anchor}.` : `${note.key}.`;
-          const textValue = note.text ? note.text.trim() : "";
-          const content = [anchorLabel, textValue].filter(Boolean).join(" ");
+          const normalizedAnchor = (note.anchor || '').replace(/^{?FN/i, '').replace(/}?$/, '').trim();
+          const fallbackKey = note.key ? note.key.split(':').pop() : '';
+          const anchorLabel = normalizedAnchor ? `${normalizedAnchor}.` : fallbackKey ? `${fallbackKey}.` : '';
+          const textValue = note.text ? note.text.trim() : '';
+          const content = [anchorLabel, textValue].filter(Boolean).join(' ');
           if (content) {
             lines.push({
               key: `note-${section.id}-${idx}`,
@@ -452,25 +418,28 @@ const KirchenvaterTextScreen = ({ route, navigation }) => {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <SafeAreaView edges={['top']} style={{ backgroundColor: colors.primary }}>
-        <View style={[styles.header, { backgroundColor: colors.primary }]}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={[styles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
-          >
-            <Ionicons name="arrow-back" size={22} color={colors.white} />
-          </TouchableOpacity>
-          <View style={styles.headerTexts}>
-            <Text style={[styles.headerAuthor, { color: colors.white }]} numberOfLines={1}>
-              {kirchenvater}
-            </Text>
-            <Text style={[styles.headerTitle, { color: colors.white }]} numberOfLines={1}>
-              {workTitle}
-            </Text>
+      {/* Header background wrapper with rounded bottom corners */}
+      <View style={[styles.headerBackground, { backgroundColor: colors.primary }]}>
+        <SafeAreaView style={styles.headerSafeArea}>
+          <View style={styles.header}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={[styles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
+            >
+              <Ionicons name="arrow-back" size={22} color={colors.white} />
+            </TouchableOpacity>
+            <View style={styles.headerTexts}>
+              <Text style={[styles.headerAuthor, { color: colors.white }]} numberOfLines={1}>
+                {kirchenvater}
+              </Text>
+              <Text style={[styles.headerTitle, { color: colors.white }]} numberOfLines={1}>
+                {workTitle}
+              </Text>
+            </View>
+            <View style={styles.headerRight} />
           </View>
-          <View style={styles.headerRight} />
-        </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      </View>
 
       {sections.length > 0 && (
         <View style={[styles.chapterNav, { backgroundColor: colors.cardBackground }]}>
@@ -537,7 +506,7 @@ const KirchenvaterTextScreen = ({ route, navigation }) => {
                         block.indentLevel ? { marginLeft: block.indentLevel * 12 } : null,
                       ]}
                     >
-                      {renderTextWithFootnotes(block.text, block.footnoteAnchors)}
+                      {renderTextWithFootnotes(block.text, block.footnoteMap)}
                     </Text>
                   </View>
                 )
@@ -558,6 +527,15 @@ const KirchenvaterTextScreen = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeAreaContent: { flex: 1 },
+  headerBackground: {
+    backgroundColor: '#000', // overridden by dynamic color
+    paddingTop: 0,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+  },
+  headerSafeArea: {
+    backgroundColor: 'transparent',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -599,17 +577,19 @@ const styles = StyleSheet.create({
   chapterInfo: { flex: 1, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   chapterNavText: { fontSize: normalize(16), fontFamily: 'Montserrat_500Medium', fontWeight: '500' },
   scrollView: { flex: 1 },
-  scrollContent: { paddingHorizontal: 24, paddingVertical: 20, paddingBottom: 80 },
-  textBlock: { marginBottom: 16 },
+  scrollContent: { paddingHorizontal: 25, paddingVertical: 20, paddingBottom: 100 },
+  textBlock: { marginBottom: 18 },
   blockText: {
     fontSize: normalize(16),
-    lineHeight: normalize(24),
+    lineHeight: normalize(26),
     fontFamily: 'Montserrat_400Regular',
   },
   headingText: {
     fontFamily: 'Montserrat_600SemiBold',
-    fontSize: normalize(18),
-    marginBottom: 6,
+    fontSize: normalize(19),
+    lineHeight: normalize(26),
+    marginBottom: 8,
+    marginTop: 8,
   },
   footnoteSup: {
     fontSize: normalize(12),
@@ -622,13 +602,14 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     opacity: 0.85,
     fontSize: normalize(14),
+    lineHeight: normalize(20),
   },
-  spacer: { height: 16 },
+  spacer: { height: 20 },
   divider: {
     height: 1,
     borderRadius: 2,
-    marginVertical: 16,
-    opacity: 0.4,
+    marginVertical: 20,
+    opacity: 0.3,
     alignSelf: 'stretch',
   },
   loadingContainer: {

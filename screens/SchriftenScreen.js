@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import BibelScreen from './BibelScreen';
 import VaeterScreen from './VaeterScreen';
+import KonzileScreen from './KonzileScreen';
 
 const { width, height } = Dimensions.get('window');
 const scale = width / 320; // Base width for scaling
@@ -21,8 +22,8 @@ const SchriftenScreen = ({ navigation }) => {
 
   const tabs = [
     { id: 0, name: 'Bibel', component: BibelScreen },
-    { id: 1, name: 'Kirchenväter', component: VaeterScreen },
-    { id: 2, name: 'Konzile' },
+    { id: 1, name: 'Kirchenvaeter', component: VaeterScreen },
+    { id: 2, name: 'Konzile', component: KonzileScreen },
     { id: 3, name: 'Lehrer' },
     { id: 4, name: 'Papst' },
     { id: 5, name: 'Katechismus' },
@@ -62,7 +63,7 @@ const SchriftenScreen = ({ navigation }) => {
           {activeTabData?.name}
         </Text>
         <Text style={[styles.comingSoonText, { color: colors.textSecondary }]}>
-          Wird bald verfügbar sein
+          Wird bald verfuegbar sein
         </Text>
       </View>
     );
@@ -193,3 +194,6 @@ const styles = StyleSheet.create({
 });
 
 export default SchriftenScreen;
+
+
+

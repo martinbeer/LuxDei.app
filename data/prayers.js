@@ -50,6 +50,13 @@ export const prayers = [
     text:
       'Gott, Quelle allen Lebens, ich danke dir für die Menschen an meiner Seite, für das Gute, das ich empfangen habe, und für jeden Augenblick deiner Nähe. Lehre mich, dankbar zu leben. Amen.',
   },
+  {
+    id: 'basic-morning-prayer',
+    title: 'Morgengebet (kurz)',
+    category: 'daily',
+    text:
+      'Guter Gott, ich danke dir für diesen neuen Tag. Segne mich und alle, die mir nahestehen. Amen.',
+  },
 ];
 
 export function filterPrayers({ query = '', category = 'all' } = {}) {

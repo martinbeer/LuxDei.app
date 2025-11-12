@@ -24,6 +24,7 @@ import HourDetailScreen from './screens/HourDetailScreen';
 import VaeterScreen from './screens/VaeterScreen';
 import KirchenvaterDetailScreen from './screens/KirchenvaterDetailScreen';
 import KirchenvaterTextScreen from './screens/KirchenvaterTextScreen';
+import KonzilsdokumentScreen from './screens/KonzilsdokumentScreen';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import supabaseImageManager from './utils/supabaseImageManager';
 
@@ -56,6 +57,7 @@ function SchriftenStackNavigator() {
       <Stack.Screen name="Väter" component={VaeterScreen} />
       <Stack.Screen name="KirchenvaterDetail" component={KirchenvaterDetailScreen} />
       <Stack.Screen name="KirchenvaterText" component={KirchenvaterTextScreen} />
+      <Stack.Screen name="Konzilsdokument" component={KonzilsdokumentScreen} />
     </Stack.Navigator>
   );
 }

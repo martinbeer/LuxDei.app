@@ -90,7 +90,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Union
 
 import httpx
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, Tag, NavigableString
 from slugify import slugify
 from tenacity import (RetryError, retry, retry_if_exception_type,
                       stop_after_attempt, wait_exponential_jitter)
@@ -385,6 +385,20 @@ SECTION_MAIN_HINTS = {
 
 ROMAN_NUMERAL_RE = re.compile(r'\b[IVXLCDM]{1,6}\b')
 ENUMERATION_ONLY_RE = re.compile(r'^(?:[0-9]{1,4}|[IVXLCDM]{1,6}|[A-Za-z])(?:[.)])?$')
+
+def normalise_note_key(raw: str) -> str:
+    """Normalise footnote keys extracted from anchors or list items."""
+    key = (raw or '').strip()
+    if not key:
+        return ''
+    if key.startswith('#'):
+        key = key[1:]
+    lower = key.lower()
+    if lower.startswith('fn:') or lower.startswith('note:'):
+        key = key.split(':', 1)[1]
+    elif lower.startswith('fn-') or lower.startswith('note-'):
+        key = key.split('-', 1)[1]
+    return key.strip()
 
 
 def _normalise_classifier_text(*parts: Optional[str]) -> str:
@@ -856,6 +870,36 @@ def extract_main_and_notes(soup: BeautifulSoup) -> Tuple[str, str, List[Tuple[st
         nav.decompose()
     for ornament in working_soup.select('.ornament'):
         ornament.decompose()
+    for banner in working_soup.select('.detail-view-header, .division-footer, .content-toolbar, .page-tools'):
+        banner.decompose()
+
+    primary_heading = working_soup.find(['h1', 'h2', 'h3'])
+    primary_heading_text = None
+    if primary_heading:
+        primary_heading_text = primary_heading.get_text(' ', strip=True)
+        primary_heading.decompose()
+
+    for a_tag in working_soup.find_all('a', href=True):
+        href = a_tag['href']
+        text_value = a_tag.get_text(' ', strip=True)
+        if '/scans/' in href or re.match(r'^S\.\s*\d+', text_value):
+            a_tag.decompose()
+
+    for ref in working_soup.select('a.footnote-ref'):
+        href = ref.get('href', '')
+        anchor_key = ''
+        if href and '#' in href:
+            anchor_key = normalise_note_key(href.split('#', 1)[1])
+        if not anchor_key:
+            anchor_key = normalise_note_key(ref.get_text(' ', strip=True))
+        if not anchor_key:
+            continue
+        placeholder = NavigableString(f'{{FN{anchor_key}}}')
+        parent_sup = ref.find_parent('sup')
+        if parent_sup:
+            parent_sup.replace_with(placeholder)
+        else:
+            ref.replace_with(placeholder)
 
     note_entries: List[Tuple[str, str, str]] = []
     footnotes_div = working_soup.find('div', class_='footnotes')
@@ -869,12 +913,9 @@ def extract_main_and_notes(soup: BeautifulSoup) -> Tuple[str, str, List[Tuple[st
         if not note_items:
             note_items = footnotes_div.find_all('li', recursive=False)
         for item in note_items:
-            key = item.get('id', '') or ''
-            if key.startswith('fn:'):
-                key = key.split(':', 1)[1]
-            elif key.startswith('note-'):
-                key = key.split('-', 1)[1]
-            else:
+            raw_key = item.get('id', '') or ''
+            key = normalise_note_key(raw_key)
+            if not key:
                 text_content = item.get_text(' ', strip=True)
                 match = re.match(r'(\d+|[a-zA-Z]+)', text_content)
                 key = match.group(1) if match else text_content[:10]
@@ -888,6 +929,13 @@ def extract_main_and_notes(soup: BeautifulSoup) -> Tuple[str, str, List[Tuple[st
     plain_raw = working_soup.get_text(' ', strip=True)
     plain_clean = strip_page_markers(plain_raw)
     plain_text = normalise_whitespace(plain_clean)
+    if primary_heading_text:
+        heading_lower = primary_heading_text.strip().lower()
+        plain_lower = plain_text.lower()
+        if heading_lower and plain_lower.startswith(heading_lower):
+            remainder = plain_lower[len(heading_lower):].lstrip(' :.-')
+            if remainder.startswith(heading_lower):
+                plain_text = plain_text[len(primary_heading_text):].lstrip(' :.-')
     plain_text = collapse_duplicate_enumerators(plain_text)
     return html_content, plain_text, note_entries
 
@@ -1201,28 +1249,34 @@ async def process_version(client: HttpClient, db: Optional[Database], version_ur
                 notes_list.append(note)
 
         anchor_soup = BeautifulSoup(main_html, 'html.parser')
-        anchor_candidates: List[Tuple[str, Tag]] = []
+        anchor_candidates: List[Tuple[str, Optional[Tag], object]] = []
         for sup in anchor_soup.find_all('sup'):
-            anchor_text = sup.get_text(strip=True)
+            anchor_text = normalise_note_key(sup.get_text(' ', strip=True))
             if anchor_text:
-                anchor_candidates.append((anchor_text, sup))
-        if not anchor_candidates:
-            for a_tag in anchor_soup.find_all('a', class_='footnote-ref'):
-                anchor_text = a_tag.get_text(strip=True)
+                anchor_candidates.append((anchor_text, sup, sup))
+        for a_tag in anchor_soup.find_all('a', class_='footnote-ref'):
+            anchor_text = normalise_note_key(a_tag.get_text(' ', strip=True))
+            if anchor_text:
+                anchor_candidates.append((anchor_text, a_tag, a_tag))
+        placeholder_pattern = re.compile(r'\{FN([^}]+)\}')
+        for text_node in anchor_soup.find_all(string=placeholder_pattern):
+            parent_tag = text_node.parent if isinstance(text_node, Tag) else None
+            for match in placeholder_pattern.finditer(text_node):
+                anchor_text = normalise_note_key(match.group(1))
                 if anchor_text:
-                    anchor_candidates.append((anchor_text, a_tag))
+                    anchor_candidates.append((anchor_text, parent_tag, object()))
 
         seen_targets: set = set()
-        for anchor_text, anchor_tag in anchor_candidates:
+        for anchor_text, anchor_tag, marker in anchor_candidates:
             composite_key = (division_key, anchor_text)
             note = notes_lookup.get(composite_key)
             if not note:
                 continue
-            anchor_id = (anchor_text, id(anchor_tag))
+            anchor_id = (anchor_text, id(marker))
             if anchor_id in seen_targets:
                 continue
             seen_targets.add(anchor_id)
-            parent_text = anchor_tag.parent.get_text(' ', strip=True) if anchor_tag.parent else ''
+            parent_text = anchor_tag.get_text(' ', strip=True) if anchor_tag else ''
             snippet = parent_text[:120]
             note_links.append(NoteLink(id=generate_uuid(),
                                        work_id=work_id,
@@ -1236,6 +1290,12 @@ async def process_version(client: HttpClient, db: Optional[Database], version_ur
             asset.work_id = work_id
             asset.order_index = len(assets) + 1
             assets.append(asset)
+
+    if note_links:
+        referenced_note_ids = {link.note_id for link in note_links}
+        notes_list = [note for note in notes_list if note.id in referenced_note_ids]
+    else:
+        notes_list = []
 
     structure_summary = build_structure_summary(section_profiles)
     work.summary = json.dumps(structure_summary, ensure_ascii=False)
@@ -1403,3 +1463,4 @@ if __name__ == '__main__':
         asyncio.run(main())
     except KeyboardInterrupt:
         sys.exit(0)
+

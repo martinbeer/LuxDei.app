@@ -146,19 +146,25 @@ const KirchenvaterDetailScreen = ({ route, navigation }) => {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <SafeAreaView style={styles.safeArea}>
-        <View style={[styles.header, { borderBottomColor: colors.cardBackground }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
-          <ScrollingText
-            text={kirchenvater.name}
-            style={[styles.headerTitle, { color: colors.text }]}
-            maxWidth={width * 0.7}
-          />
-          <View style={styles.headerSpacer} />
-        </View>
+      {/* Header background wrapper with rounded bottom corners */}
+      <View style={[styles.headerBackground, { backgroundColor: colors.primary }]}>
+        <SafeAreaView style={styles.headerSafeArea}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color={colors.white} />
+            </TouchableOpacity>
+            <ScrollingText
+              text={kirchenvater.name}
+              style={[styles.headerTitle, { color: colors.white }]}
+              maxWidth={width * 0.7}
+            />
+            <View style={styles.headerSpacer} />
+          </View>
+        </SafeAreaView>
+      </View>
 
+      {/* Rest of the content respects remaining safe areas */}
+      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -172,18 +178,29 @@ const KirchenvaterDetailScreen = ({ route, navigation }) => {
               works.map((work) => (
                 <TouchableOpacity
                   key={work.id}
-                  style={[styles.workCard, { backgroundColor: colors.cardBackground }]}
+                  style={[styles.workCard, { 
+                    backgroundColor: colors.cardBackground,
+                    shadowColor: colors.primary 
+                  }]}
                   onPress={() => handleWorkPress(work)}
-                  activeOpacity={0.85}
+                  activeOpacity={0.8}
                 >
-                  <Text style={[styles.workTitle, { color: colors.primary }]} numberOfLines={1}>
-                    {work.title}
-                  </Text>
-                  {work.subtitle ? (
-                    <Text style={[styles.workSubtitle, { color: colors.textSecondary }]} numberOfLines={2}>
-                      {work.subtitle}
-                    </Text>
-                  ) : null}
+                  <View style={styles.workContent}>
+                    <View style={[styles.workIcon, { backgroundColor: colors.primary + '15' }]}>
+                      <Ionicons name="document-text-outline" size={20} color={colors.primary} />
+                    </View>
+                    <View style={styles.workTextContainer}>
+                      <Text style={[styles.workTitle, { color: colors.text }]} numberOfLines={2}>
+                        {work.title}
+                      </Text>
+                      {work.subtitle ? (
+                        <Text style={[styles.workSubtitle, { color: colors.textSecondary }]} numberOfLines={2}>
+                          {work.subtitle}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+                  </View>
                 </TouchableOpacity>
               ))
             )}
@@ -201,12 +218,20 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
+  headerBackground: {
+    backgroundColor: '#000', // overridden by dynamic color
+    paddingTop: 0,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+  },
+  headerSafeArea: {
+    backgroundColor: 'transparent',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   backButton: {
     padding: 6,
@@ -233,28 +258,44 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 24,
-    gap: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    paddingBottom: 40,
   },
   workCard: {
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    marginBottom: 16,
+    borderRadius: 15,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  workContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 18,
+  },
+  workIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  workTextContainer: {
+    flex: 1,
   },
   workTitle: {
     fontSize: normalize(16),
     fontFamily: 'Montserrat_600SemiBold',
-    marginBottom: 6,
+    lineHeight: normalize(22),
+    marginBottom: 4,
   },
   workSubtitle: {
     fontSize: normalize(13),
     fontFamily: 'Montserrat_400Regular',
+    lineHeight: normalize(18),
   },
   emptyText: {
     fontSize: normalize(16),

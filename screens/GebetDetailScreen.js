@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, BackHandler, Dime
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
-import { loadPrayerDetail } from '../lib/prayersApi';
+import { loadPrayerDetail } from '../lib/prayersHelper';
 
 const MIN_SECONDS = 12;
 const MAX_SECONDS = 180;

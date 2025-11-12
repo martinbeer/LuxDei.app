@@ -12,7 +12,7 @@ import {
   Alert,
   Dimensions
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -27,6 +27,7 @@ const normalize = (size) => Math.round(size * scale);
 const ChatScreen = () => {
   const { colors } = useTheme();
   const navigation = useNavigation();
+  const route = useRoute();
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState([
     {
@@ -90,18 +91,23 @@ const ChatScreen = () => {
     }
   };
 
-  const sendMessage = async () => {
-    if (inputText.trim() === '' || isLoading) return;
+  const sendMessage = async (messageToSend) => {
+    // Wenn messageToSend übergeben wurde, nutze das; sonst nutze inputText
+    const textToSend = messageToSend ? messageToSend.text : inputText.trim();
+    
+    if (!textToSend || isLoading) return;
 
     const userMessage = {
-      id: Date.now().toString() + '_user',
-      text: inputText.trim(),
+      id: messageToSend?.id || (Date.now().toString() + '_user'),
+      text: textToSend,
       isBot: false,
-      timestamp: new Date().toISOString()
+      timestamp: messageToSend?.timestamp || new Date().toISOString()
     };
 
     setMessages(prev => [...prev, userMessage]);
-    setInputText('');
+    if (!messageToSend) {
+      setInputText('');
+    }
     setIsLoading(true);
 
     // Bot-Antwort von OpenAI holen
@@ -245,6 +251,42 @@ const ChatScreen = () => {
       </View>
     </View>
   );
+
+  // Handle initial message from Bible screen
+  useEffect(() => {
+    if (route.params?.initialMessage) {
+      const initialMessage = route.params.initialMessage;
+      const autoSend = route.params?.autoSend;
+      
+      console.log('[ChatScreen] Initial message from Bible screen:', initialMessage);
+      console.log('[ChatScreen] AutoSend:', autoSend);
+      
+      // Wenn autoSend=true, sende direkt ohne inputText zu setzen
+      if (autoSend) {
+        // Warte kurz damit die UI bereit ist, dann sende automatisch
+        setTimeout(() => {
+          console.log('[ChatScreen] Auto-sending message:', initialMessage);
+          // Sende die Nachricht direkt
+          sendMessage({ 
+            id: Date.now().toString() + '_auto',
+            text: initialMessage,
+            isBot: false,
+            timestamp: new Date().toISOString()
+          });
+          // Inputtext bleibt leer
+          setInputText('');
+        }, 100);
+      } else {
+        // Nur wenn nicht autoSend: setze Text und fokussiere
+        setInputText(initialMessage);
+        setTimeout(() => {
+          if (realInputRef.current) {
+            realInputRef.current.focus();
+          }
+        }, 300);
+      }
+    }
+  }, [route.params?.initialMessage, route.params?.autoSend]);
 
   useEffect(() => {
     // Scroll nach unten bei neuen Nachrichten

@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Alert, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Alert, PanResponder, Pressable, Share, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import * as Clipboard from 'expo-clipboard';
+import { queryChurchFathersWithAI } from '../lib/churchFathersAIGateway';
 
 const { width: windowWidth } = Dimensions.get('window');
 const scale = windowWidth / 320;
@@ -27,9 +30,24 @@ const BibelContentScreen = ({ route, navigation }) => {
   const [chapterCache, setChapterCache] = useState(new Map());
   const [prefetchingChapters, setPrefetchingChapters] = useState(new Set());
 
+  // Kirchenväter Search State
+  const [referencePanelVisible, setReferencePanelVisible] = useState(false);
+  const [referenceLoading, setReferenceLoading] = useState(false);
+  const [referenceContent, setReferenceContent] = useState(null);
+  const [referenceError, setReferenceError] = useState(null);
+  const [selectedVerse, setSelectedVerse] = useState(null);
+
+  // LuxAI Question State
+  const [showLuxaiInput, setShowLuxaiInput] = useState(false);
+  const [luxaiQuestion, setLuxaiQuestion] = useState('');
+  const [selectedVerseForQuestion, setSelectedVerseForQuestion] = useState(null);
+  const [luxaiInputHeight, setLuxaiInputHeight] = useState(40);
+  const luxaiRealInputRef = useRef(null);
+
   // Refs for scrolling/highlight
   const scrollViewRef = useRef(null);
   const verseRefs = useRef(new Map());
+  const isMountedRef = useRef(true);
 
   // Scrubber state for fast chapter jumping
   const [isScrubbing, setIsScrubbing] = useState(false);
@@ -78,6 +96,18 @@ const BibelContentScreen = ({ route, navigation }) => {
       return () => clearTimeout(timer);
     }
   }, [highlightedVerse, verses]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Force re-render when referenceContent changes
+  useEffect(() => {
+    console.log('[BibelContentScreen] referenceContent changed:', referenceContent?.length, 'items');
+  }, [referenceContent]);
 
   // Helpers
   const getCacheKey = (book, chapter) => `${book}_${chapter}`;
@@ -256,19 +286,172 @@ const BibelContentScreen = ({ route, navigation }) => {
   };
 
   // Render a verse row
+  const handleToggleHighlight = (targetVerse) => {
+    setHighlightedVerse((prev) => {
+      if (prev) {
+        verseRefs.current.delete(prev);
+      }
+      if (prev && parseInt(prev, 10) === parseInt(targetVerse, 10)) {
+        return null;
+      }
+      return targetVerse;
+    });
+  };
+
+  const handleVerseLongPress = (verse) => {
+    const reference = `${bookDisplayName} ${currentChapter},${verse.vers}`;
+    const verseMessage = `${reference}\n\n${verse.text}`;
+
+    Alert.alert(
+      'Versoptionen',
+      reference,
+      [
+        {
+          text:
+            highlightedVerse && parseInt(highlightedVerse, 10) === parseInt(verse.vers, 10)
+              ? 'Markierung entfernen'
+              : 'Vers markieren',
+          onPress: () => handleToggleHighlight(verse.vers),
+        },
+        {
+          text: 'Kopieren',
+          onPress: () => {
+            Clipboard.setStringAsync(verseMessage).catch((err) =>
+              console.warn('Clipboard copy failed', err)
+            );
+          },
+        },
+        {
+          text: 'Teilen',
+          onPress: () => {
+            Share.share({ message: verseMessage }).catch((err) =>
+              console.warn('Share failed', err)
+            );
+          },
+        },
+        {
+          text: 'Kirchenväter durchsuchen',
+          onPress: () => {
+            // Verzögerung damit Alert geschlossen wird bevor Modal öffnet
+            setTimeout(() => {
+              handleSearchKirchenvaeter(verse);
+            }, 100);
+          },
+        },
+        {
+          text: 'LuxAI fragen',
+          onPress: () => {
+            setSelectedVerseForQuestion(verse);
+            setShowLuxaiInput(true);
+          },
+        },
+        { text: 'Abbrechen', style: 'cancel' },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  const handleSearchKirchenvaeter = async (verse) => {
+    console.log('[BibelContentScreen] Starting Kirchenväter search for verse:', verse);
+    setSelectedVerse(verse);
+    setReferenceContent(null);
+    setReferenceError(null);
+    setReferenceLoading(true);
+    // WICHTIG: Modal erst NACH Datenbeschaffung öffnen!
+    // setReferencePanelVisible(true);  // NICHT hier!
+
+    try {
+      const result = await queryChurchFathersWithAI({
+        book: bookDisplayName,
+        chapter: currentChapter,
+        verse: verse.vers,
+        verseText: verse.text,
+        translationTable: tableName,
+      });
+
+      console.log('[BibelContentScreen] AI Gateway result:', result);
+      console.log('[BibelContentScreen] Passages:', result.passages);
+      console.log('[BibelContentScreen] Passages length:', result.passages?.length);
+      console.log('[BibelContentScreen] Source:', result.source);
+
+      if (result.passages && result.passages.length > 0) {
+        console.log('[BibelContentScreen] Setting reference content with', result.passages.length, 'items from', result.source);
+        setReferenceContent(result.passages);
+        setReferenceError(null);
+      } else {
+        console.log('[BibelContentScreen] No passages found');
+        setReferenceContent([]);
+        setReferenceError(result.message || result.error || 'Keine Kirchenväter-Zitate zu diesem Vers gefunden.');
+      }
+      
+      // State-Updates abschließen
+      setReferenceLoading(false);
+      
+      // Modal JETZT öffnen wenn Daten da sind!
+      setTimeout(() => {
+        setReferencePanelVisible(true);
+      }, 0);
+      
+    } catch (error) {
+      console.warn('[BibelContentScreen] Kirchenväter Suche Exception:', error);
+      setReferenceError('Fehler bei der Suche: ' + (error?.message || 'Unbekannter Fehler'));
+      setReferenceLoading(false);
+      // Modal auch im Error-Fall öffnen damit Fehler angezeigt wird
+      setTimeout(() => {
+        setReferencePanelVisible(true);
+      }, 0);
+    }
+  };
+
+  const handleSendToLuxai = () => {
+    if (!luxaiQuestion.trim() || !selectedVerseForQuestion) {
+      return;
+    }
+
+    const verseRef = `[${bookDisplayName} ${currentChapter},${selectedVerseForQuestion.vers}]`;
+    const messageText = `${verseRef} ${luxaiQuestion}`;
+
+    console.log('[BibelContentScreen] Sending to LuxAI:', messageText);
+
+    // Schließe Modal
+    setShowLuxaiInput(false);
+    setLuxaiQuestion('');
+
+    // Navigiere zu ChatScreen und sende Nachricht automatisch
+    setTimeout(() => {
+      navigation.navigate('Chat', {
+        initialMessage: messageText,
+        autoSend: true,  // ← Neue Parameter für automatisches Senden
+        verse: selectedVerseForQuestion,
+        bookDisplayName: bookDisplayName,
+        chapter: currentChapter,
+      });
+    }, 300);
+  };
+
   const renderVerse = (verse) => {
     const isHighlighted = highlightedVerse && parseInt(verse.vers) === parseInt(highlightedVerse);
+    const highlightStyle = isHighlighted
+      ? { backgroundColor: colors.primary + '20', borderRadius: 8, padding: 8 }
+      : null;
     return (
-      <View
+      <Pressable
         key={verse.id}
         ref={(ref) => {
           if (ref && isHighlighted) verseRefs.current.set(highlightedVerse, ref);
         }}
-        style={[styles.verseContainer, isHighlighted && { backgroundColor: colors.primary + '20', borderRadius: 8, padding: 8 }]}
+        onLongPress={() => handleVerseLongPress(verse)}
+        delayLongPress={350}
+        android_ripple={{ color: colors.primary + '22' }}
+        style={({ pressed }) => [
+          styles.verseContainer,
+          highlightStyle,
+          pressed && !isHighlighted ? { opacity: 0.7 } : null,
+        ]}
       >
         <Text style={[styles.verseNumber, { color: colors.primary }]}>{verse.vers}</Text>
         <Text style={[styles.verseText, { color: colors.text }]}>{verse.text}</Text>
-      </View>
+      </Pressable>
     );
   };
 
@@ -400,11 +583,207 @@ const BibelContentScreen = ({ route, navigation }) => {
             ) : (
               <View style={styles.noDataContainer}>
                 <Ionicons name="book-outline" size={60} color={colors.cardBackground} />
-                <Text style={[styles.noDataText, { color: colors.textSecondary }]}>Keine Verse für dieses Kapitel gefunden</Text>
+                <Text style={[styles.noDataText, { color: colors.textSecondary }]}>Keine Verse f++r dieses Kapitel gefunden</Text>
               </View>
             )}
           </ScrollView>
         )}
+
+        {/* Kirchenväter Referenzen Modal */}
+        <Modal
+          visible={referencePanelVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setReferencePanelVisible(false)}
+        >
+          <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+            <View style={[styles.referencePanel, { backgroundColor: colors.background }]}>
+              {/* Header */}
+              <View style={[styles.referencePanelHeader, { borderBottomColor: colors.primary }]}>
+                <Text style={[styles.referencePanelTitle, { color: colors.text }]}>
+                  Kirchenväter zu {selectedVerse ? `${bookDisplayName} ${currentChapter},${selectedVerse.vers}` : 'diesem Vers'}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setReferencePanelVisible(false)}
+                  style={styles.closeButton}
+                >
+                  <Ionicons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Content */}
+              {referenceLoading ? (
+                <View style={styles.referencePanelLoading}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Suche lädt...</Text>
+                </View>
+              ) : referenceError ? (
+                <View style={styles.referencePanelError}>
+                  <Ionicons name="alert-circle-outline" size={40} color={colors.textSecondary} />
+                  <Text style={[styles.errorText, { color: colors.textSecondary }]}>{referenceError}</Text>
+                </View>
+              ) : Array.isArray(referenceContent) && referenceContent.length > 0 ? (
+                <ScrollView
+                  style={styles.referencePanelContent}
+                  showsVerticalScrollIndicator={true}
+                  scrollEventThrottle={16}
+                  contentContainerStyle={styles.referencePanelScrollContent}
+                  nestedScrollEnabled={true}
+                >
+                  {referenceContent.map((passage, idx) => {
+                    console.log(`[BibelContentScreen] Rendering passage ${idx}:`, passage.author);
+                    return (
+                      <View key={idx} style={[styles.referenceQuote, { borderLeftColor: colors.primary }]}>
+                        <Text style={[styles.referenceAuthor, { color: colors.primary }]}>
+                          {passage.author}
+                        </Text>
+                        <Text style={[styles.referenceWork, { color: colors.textSecondary }]}>
+                          {passage.work}
+                        </Text>
+                        <Text style={[styles.referenceExcerpt, { color: colors.text }]} numberOfLines={5}>
+                          {passage.excerpt}
+                        </Text>
+                        {passage.relevance && (
+                          <Text style={[styles.referenceRelevance, { color: colors.textSecondary, marginTop: 6, fontSize: 12, fontStyle: 'italic' }]}>
+                            {passage.relevance}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              ) : (
+                <View style={styles.referencePanelEmpty}>
+                  <Ionicons name="book-outline" size={40} color={colors.textSecondary} />
+                  <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                    {referenceContent === null 
+                      ? 'Lädt...' 
+                      : referenceContent === undefined
+                      ? 'Undefined State'
+                      : Array.isArray(referenceContent)
+                      ? `Array aber leer (${referenceContent.length} items)`
+                      : 'Keine Zitate gefunden'
+                    }
+                  </Text>
+                  {/* Debug Info */}
+                  <Text style={[{ color: colors.textSecondary, fontSize: 10, marginTop: 10 }]}>
+                    State: {JSON.stringify({ 
+                      loading: referenceLoading, 
+                      contentLength: referenceContent?.length,
+                      contentType: typeof referenceContent,
+                      error: referenceError,
+                      isArray: Array.isArray(referenceContent)
+                    })}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </Modal>
+
+        {/* LuxAI Input Modal with KeyboardAvoidingView */}
+        <Modal
+          visible={showLuxaiInput}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => {
+            setShowLuxaiInput(false);
+            setLuxaiQuestion('');
+          }}
+        >
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.luxaiKeyboardContainer}
+          >
+            <View style={[styles.luxaiModalContainer, { backgroundColor: colors.background }]}>
+              {/* Header */}
+              <View style={[styles.luxaiPanelHeader, { backgroundColor: colors.background, borderBottomColor: colors.primary }]}>
+                <Text style={[styles.luxaiPanelTitle, { color: colors.text }]}>
+                  LuxAI fragen zu {selectedVerseForQuestion ? `${bookDisplayName} ${currentChapter},${selectedVerseForQuestion.vers}` : 'diesem Vers'}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowLuxaiInput(false);
+                    setLuxaiQuestion('');
+                  }}
+                  style={styles.luxaiCloseButton}
+                >
+                  <Ionicons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Scrollable Content */}
+              <ScrollView 
+                style={styles.luxaiContentScroll} 
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.luxaiScrollContent}
+              >
+                {/* Verse Preview */}
+                {selectedVerseForQuestion && (
+                  <View style={[styles.luxaiInputContainer, { backgroundColor: colors.background }]}>
+                    <View style={[styles.luxaiVersePreview, { backgroundColor: colors.cardBackground }]}>
+                      <Text style={[styles.luxaiVerseRef, { color: colors.primary }]}>
+                        {bookDisplayName} {currentChapter},{selectedVerseForQuestion.vers}
+                      </Text>
+                      <Text style={[styles.luxaiVerseText, { color: colors.text }]} numberOfLines={3}>
+                        {selectedVerseForQuestion.text}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </ScrollView>
+
+              {/* Input Area at Bottom */}
+              <View style={[styles.luxaiInputFooter, { backgroundColor: colors.background, borderTopColor: colors.primary }]}>
+                <View style={[
+                  styles.luxaiTextInputWrapper, 
+                  { 
+                    backgroundColor: colors.primary + '30',
+                    borderColor: colors.primary + '60'
+                  }
+                ]}>
+                  <TextInput
+                    ref={luxaiRealInputRef}
+                    style={[
+                      styles.luxaiTextInput, 
+                      { 
+                        color: colors.primary,
+                        height: Math.max(40, Math.min(120, luxaiInputHeight))
+                      }
+                    ]}
+                    placeholder="Deine Frage eingeben..."
+                    placeholderTextColor={colors.primary + '70'}
+                    value={luxaiQuestion}
+                    onChangeText={setLuxaiQuestion}
+                    onContentSizeChange={(e) => setLuxaiInputHeight(e.nativeEvent.contentSize.height)}
+                    multiline={true}
+                    maxLength={500}
+                    returnKeyType="send"
+                    onSubmitEditing={handleSendToLuxai}
+                    blurOnSubmit={false}
+                    autoFocus={true}
+                  />
+                  <TouchableOpacity
+                    onPress={handleSendToLuxai}
+                    disabled={!luxaiQuestion.trim()}
+                    style={[
+                      styles.luxaiSendButton,
+                      { 
+                        backgroundColor: luxaiQuestion.trim() ? colors.primary : colors.primary + '40',
+                      }
+                    ]}
+                  >
+                    <Ionicons 
+                      name="send" 
+                      size={normalize(16)} 
+                      color={luxaiQuestion.trim() ? colors.white : colors.primary}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       </SafeAreaView>
     </View>
   );
@@ -474,6 +853,215 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
   },
   scrubBubbleText: { fontSize: normalize(12), fontFamily: 'Montserrat_700Bold', fontWeight: '700' },
+
+  // Kirchenväter Modal Styles
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  referencePanel: {
+    width: '90%',
+    height: '85%',  // ← GEÄNDERT: Explizite Höhe statt maxHeight
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    flexDirection: 'column',  // ← HINZUGEFÜGT: Stellt sicher dass children richtig layoutet sind
+  },
+  referencePanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 2,
+  },
+  referencePanelTitle: {
+    fontSize: normalize(16),
+    fontFamily: 'Montserrat_600SemiBold',
+    fontWeight: '600',
+    flex: 1,
+    marginRight: 10,
+  },
+  closeButton: {
+    padding: 8,
+  },
+  referencePanelContent: {
+    flex: 1,  // ← Nimmt jetzt alle verfügbare Höhe
+  },
+  referencePanelScrollContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexGrow: 1,  // ← HINZUGEFÜGT: ScrollView kann expandieren
+  },
+  referenceQuote: {
+    borderLeftWidth: 3,
+    paddingLeft: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  referenceAuthor: {
+    fontSize: normalize(14),
+    fontFamily: 'Montserrat_600SemiBold',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  referenceWork: {
+    fontSize: normalize(12),
+    fontFamily: 'Montserrat_400Regular',
+    marginBottom: 6,
+  },
+  referenceExcerpt: {
+    fontSize: normalize(14),
+    fontFamily: 'Montserrat_400Regular',
+    lineHeight: normalize(20),
+  },
+  referencePanelLoading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  referencePanelError: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  errorText: {
+    fontSize: normalize(14),
+    fontFamily: 'Montserrat_400Regular',
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  referencePanelEmpty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: normalize(14),
+    fontFamily: 'Montserrat_400Regular',
+    marginTop: 12,
+  },
+
+  // LuxAI Input Modal Styles
+  luxaiKeyboardContainer: {
+    flex: 1,
+  },
+  luxaiModalContainer: {
+    flex: 1,
+    flexDirection: 'column',
+  },
+  luxaiContentScroll: {
+    flex: 1,
+  },
+  luxaiScrollContent: {
+    paddingBottom: 20,
+  },
+  luxaiInputFooter: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+  },
+  luxaiPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  luxaiPanelTitle: {
+    fontSize: normalize(16),
+    fontFamily: 'Montserrat_600SemiBold',
+    fontWeight: '600',
+    flex: 1,
+    marginRight: 10,
+  },
+  luxaiCloseButton: {
+    padding: 8,
+  },
+  luxaiInputContainer: {
+    padding: 16,
+  },
+  luxaiVersePreview: {
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+  },
+  luxaiVerseRef: {
+    fontSize: normalize(13),
+    fontFamily: 'Montserrat_600SemiBold',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  luxaiVerseText: {
+    fontSize: normalize(13),
+    fontFamily: 'Montserrat_400Regular',
+    lineHeight: normalize(18),
+  },
+  luxaiTextInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 30,
+    borderWidth: 1,
+    paddingLeft: 18,
+    paddingRight: 10,
+    paddingVertical: 12,
+    minHeight: 56,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+    marginBottom: 12,
+  },
+  luxaiTextInput: {
+    flex: 1,
+    fontSize: normalize(16),
+    fontFamily: 'Montserrat_400Regular',
+    paddingVertical: 6,
+    height: 40,
+  },
+  luxaiCharCount: {
+    fontSize: normalize(11),
+    fontFamily: 'Montserrat_400Regular',
+    textAlign: 'right',
+    marginBottom: 12,
+  },
+  luxaiSendButton: {
+    width: normalize(40),
+    height: normalize(40),
+    borderRadius: normalize(20),
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  luxaiSendButtonText: {
+    fontSize: normalize(14),
+    fontFamily: 'Montserrat_600SemiBold',
+    fontWeight: '600',
+  },
 });
 
 export default BibelContentScreen;

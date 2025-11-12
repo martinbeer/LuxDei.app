@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigation } from '@react-navigation/native';
-import { loadCategoriesAndPrayers, loadPrayerDetail } from '../lib/prayersApi';
+import { loadCategoriesAndPrayers, loadPrayerDetail } from '../lib/prayersHelper';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {

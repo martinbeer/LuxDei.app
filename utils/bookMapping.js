@@ -57,12 +57,12 @@ export const bookNameMapping = {
     'bibelverse_einheit': '2.Sam'
   },
   '1. Könige': {
-  'bibelverse': 'Das 1. Buch der Könige',
+    'bibelverse': 'Das 1. Buch der Koenige',
     'bibelverse_schoenigh': '1Kön',
     'bibelverse_einheit': '1.Kön'
   },
   '2. Könige': {
-  'bibelverse': 'Das 2. Buch der Könige',
+    'bibelverse': 'Das 2. Buch der Koenige',
     'bibelverse_schoenigh': '2Kön',
     'bibelverse_einheit': '2.Kön'
   },

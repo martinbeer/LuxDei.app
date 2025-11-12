@@ -33,7 +33,7 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "openaiApiKey": "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",
+      "openaiApiKey": "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",
       "gebeteURL": "http://192.168.1.121:1337/api/prayer-categories"
     },
 
